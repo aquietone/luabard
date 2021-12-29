@@ -2,92 +2,91 @@
 
 A Bard bot using Lua.
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.com/aquietone/luabard.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://gitlab.com/aquietone/luabard/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://gitlab.com/-/experiment/new_project_readme_content:5993ba8a75f0b64deaa6f607b4eab29b?https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Overview
+This script automates a level 120 Bard in a group setting. It expects to find all spells and AAs and such that it needs to run.
 
 ## Visuals
 Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Download bardbot.lua to your `mq/lua` folder.
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+Start the script with `/lua run bardbot`.
 
 ## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Open issues on this repository.
 
 ## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Where it stops, nobody knows.
 
 ## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Always open to suggestions.
 
 ## License
-For open source projects, say how it is licensed.
+MIT
 
 ## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Experimental
 
+Available modes:
+- Manual: choose your own targets to engage and let the script do the rest
+- Assist: set a camp at your current location and assist the MA on targets within your camp
+- Chase:  follow somebody around and assist the MA
+
+Spell Sets:
+- melee:    Use melee adps songs + insult
+- caster:   Use caster adps songs + insult
+- meleedot: Use melee adps songs + insult + dots
+
+Commands:
+- /brd burnnow:    activate full burns immediately
+- /brd mode 0|1|2: set your mode. 0=manual, 1=assist, 2=chase
+- /brd show|hide:  toggle the UI window
+- /brd resetcamp:  reset camp location to current position
+
+Other Settings:
+- Assist:         Select the main assist from one of group, raid1, raid2, raid3
+- Assist Percent: Target percent HP to assist the MA.
+- Camp Radius:    Only assist on targets within this radius of you, whether camp is set or chasing.
+- Chase Target:   Name of the PC to chase.
+- Burn Percent:   Target percent HP to engage burns. This applies to burn named and burn on proliferation proc. 0 ignores the percent check.
+- Burn Count:     Start burns if greater than or equal to this number of mobs in camp.
+- Epic:           Always, With Shaman, Burn, Never. When to use epic + fierce eye
+
+- Burn Always:    Engage burns as they are available.
+- Burn Named:     Engage burns on named mobs.
+- Alliance:       Use alliance if more than 1 necro in group or raid.
+- Switch with MA: Always change to the MAs current target.
+
+- Fade:           Toggle using Fading Memories to reduce aggro.
+
+What all bard bot does:
+0. Refreshes selos often when not invis or paused
+1. Keeps you in your camp if assist mode is set
+2. Keeps up with your chase target if chase mode is set
+3. Check for surrounding mobs
+4. AE mez if enabled and >= 3 mobs around
+5. Single mez if enabled and >= 2 mobs around
+6. Assist MA if assist conditions are met (mob in range, at or below assist %, target switching on or not currently engaged)
+7. Send swarm pets
+8. Find the next best song to use
+    - alliance
+    - insult synergy
+    - regular spell set order
+9. Engage burns if burn conditions met
+10. Use mana recovery stuff if low mana/end
+
+Spell bar ordering can be adjusted by rearranging things in the "check_spell_set" function.
+
+Other things to note:
+- Drops target if MA targets themself.
+- Does not break invis in any mode.
+
+Burn Conditions:
+- Burn Always:  Use burns as they are available. Attempt at least some synergy for twincast -- only twincast if spire and hand of death are ready
+- Burn Named:   Burn on anything with Target.Named == true
+- Burn Count:   Burn once X # of mobs are in camp
+- Burn Pct:     Burn anything below a certain % HP
+
+Settings are stored in config/bardbot_server_charactername.lua
