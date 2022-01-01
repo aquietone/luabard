@@ -104,6 +104,7 @@ local USE_ALLIANCE = true -- enable use of alliance spell
 local RALLY_GROUP = false
 local USE_FADE = false
 local USE_SWARM = true -- not implemented
+local BYOS = false
 
 local MIN_MANA = 15
 local MIN_END = 15
@@ -446,6 +447,7 @@ local function load_settings()
     if settings['MEZST'] ~= nil then MEZST = settings['MEZST'] end
     if settings['MEZAE'] ~= nil then MEZAE = settings['MEZAE'] end
     if settings['USE_EPIC'] ~= nil then USE_EPIC = settings['USE_EPIC'] end
+    if settings['BYOS'] ~= nil then USE_EPIC = settings['BYOS'] end
 end
 
 local function save_settings()
@@ -469,6 +471,7 @@ local function save_settings()
         MEZST=MEZST,
         MEZAE=MEZAE,
         USE_EPIC=USE_EPIC,
+        BYOS=BYOS,
     }
     persistence.store(SETTINGS_FILE, settings)
 end
@@ -545,7 +548,7 @@ local function check_camp()
     if am_i_dead() then return end
     if is_fighting() or not CAMP then return end
     if mq.TLO.Zone.ID() ~= CAMP.ZoneID then
-        printf('Clearing camp as we have zoned.')
+        printf('Clearing camp due to zoning.')
         CAMP = nil
         return
     end
@@ -592,22 +595,23 @@ local function mob_radar()
                     TARGETS[mob_id] = nil
                     num_corpses = num_corpses+1
                 elseif not TARGETS[mob_id] then
+                    debug('Adding mob_id %d', mob_id)
                     TARGETS[mob_id] = {meztimer=0}
                 end
             end
         end
         MOB_COUNT = MOB_COUNT - num_corpses
     end
-    debug('#TARGETS: %d, MOB_COUNT: %d', table_size(TARGETS), MOB_COUNT)
 end
 
 local function clean_targets()
-    for mobid,mobdata in pairs(TARGETS) do
+    for mobid,_ in pairs(TARGETS) do
         local spawn = mq.TLO.Spawn(string.format('id %s', mobid))
         if not spawn() or spawn.Type() == 'Corpse' then
             TARGETS[mobid] = nil
-        else
-            TARGETS[mobid].meztimer = 0
+        --else
+        --    printf('Resetting meztimer for mob_id %d', mobid)
+        --    TARGETS[mobid].meztimer = 0
         end
     end
 end
@@ -715,7 +719,7 @@ local function attack()
         mq.cmd('/squelch /nav stop')
     end
     if not mq.TLO.Stick.Active() and timer_expired(stick_timer, 3) then
-        mq.cmd('/squelch /stick loose moveback 50%% uw')
+        mq.cmd('/squelch /stick loose moveback 50% uw')
         stick_timer = current_time()
     end
     if not mq.TLO.Me.Combat() then
@@ -727,10 +731,10 @@ local function in_control()
     return not mq.TLO.Me.Stunned() and not mq.TLO.Me.Silenced() and not mq.TLO.Me.Mezzed() and not mq.TLO.Me.Invulnerable() and not mq.TLO.Me.Hovering()
 end
 
+local crescendo_timer = 0
 local function cast(spell_name, requires_target, requires_los)
     if not in_control() or (requires_los and not mq.TLO.Target.LineOfSight()) then return end
-    if mq.TLO.Spell(spell_name).EnduranceCost() > 1000 and mq.TLO.Me.PctEndurance() < MIN_END then return end
-    if mq.TLO.Spell(spell_name).Mana() > 1000 and mq.TLO.Me.PctMana() < MIN_MANA then return end
+    if requires_target and mq.TLO.Target.ID() ~= ASSIST_TARGET_ID then return end
     printf('Casting \ar%s\ax', spell_name)
     mq.cmdf('/cast "%s"', spell_name)
     mq.delay(10)
@@ -738,14 +742,15 @@ local function cast(spell_name, requires_target, requires_los)
     mq.delay(10)
     if not mq.TLO.Me.Casting() then mq.cmdf('/cast %s', spell_name) end
     mq.delay(10)
+    --mq.delay(200+mq.TLO.Spell(spell_name).MyCastTime(), function() return not mq.TLO.Me.Casting() end)
     mq.delay(3200, function() return not mq.TLO.Me.Casting() end)
     mq.cmd('/stopcast')
+    if spell_name == spells['crescendo']['name'] then crescendo_timer = current_time() end
 end
 
 local function cast_mez(spell_name)
     if not in_control() or not mq.TLO.Target.LineOfSight() then return end
-    if mq.TLO.Spell(spell_name).EnduranceCost() > 1000 and mq.TLO.Me.PctEndurance() < MIN_END then return end
-    if mq.TLO.Spell(spell_name).Mana() > 1000 and mq.TLO.Me.PctMana() < MIN_MANA then return end
+    local mez_target_id = mq.TLO.Target.ID()
     printf('Casting \ar%s\ax', spell_name)
     mq.cmdf('/cast "%s"', spell_name)
     mq.delay(10)
@@ -754,41 +759,67 @@ local function cast_mez(spell_name)
     if not mq.TLO.Me.Casting() then mq.cmdf('/cast %s', spell_name) end
     mq.delay(10)
     check_target()
-    attack()
+    if mq.TLO.Target.ID() ~= mez_target_id then
+        mq.delay('1s')
+        attack()
+    end
+    --mq.delay(200+mq.TLO.Spell(spell_name).MyCastTime(), function() return not mq.TLO.Me.Casting() end)
     mq.delay(3200, function() return not mq.TLO.Me.Casting() end)
     mq.cmd('/stopcast')
 end
 
 local MEZ_IMMUNES = {}
 local MEZ_TARGET_NAME = nil
+local MEZ_TARGET_ID = 0
 local function check_mez()
     if MOB_COUNT >= AE_MEZ_COUNT and MEZAE then
         if mq.TLO.Me.Gem(spells['mezae']['name'])() and mq.TLO.Me.GemTimer(spells['mezae']['name'])() == 0 then
             printf('AE Mezzing (MOB_COUNT=%d)', MOB_COUNT)
             cast(spells['mezae']['name'])
+            mob_radar()
+            for id,_ in pairs(TARGETS) do
+                local mob = mq.TLO.Spawn('id '..id)
+                if mob() and not MEZ_IMMUNES[mob.CleanName()] then
+                    mob.DoTarget()
+                    mq.delay(50) -- allow time for target to actually change before checking buffs populated on new target
+                    mq.delay('1s', function() return mq.TLO.Target.BuffsPopulated() end)
+                    if mq.TLO.Target() and mq.TLO.Target.Buff(spells['mezae']['name'])() then
+                        debug('AEMEZ setting meztimer mob_id %d', id)
+                        TARGETS[id].meztimer = current_time()
+                    end
+                end
+            end
         end
     end
-    if not MEZST or MOB_COUNT <= 1 then return end
+    if not MEZST or MOB_COUNT <= 1 or not mq.TLO.Me.Gem(spells['mezst']['name'])() then return end
     for id,mobdata in pairs(TARGETS) do
-        if id ~= ASSIST_TARGET_ID and (mobdata['meztimer'] == 0 or time_remaining(mobdata['meztimer'], 10)) then
+        if id ~= ASSIST_TARGET_ID and (mobdata['meztimer'] == 0 or timer_expired(mobdata['meztimer'], 30)) then
+            debug('[%s] meztimer: %s timer_expired: %s', id, mobdata['meztimer'], timer_expired(mobdata['meztimer'], 30))
             local mob = mq.TLO.Spawn('id '..id)
             if mob() and not MEZ_IMMUNES[mob.CleanName()] then
                 if id ~= ASSIST_TARGET_ID and mob.Level() <= 123 and mob.Type() == 'NPC' then
+                    mq.cmd('/attack off')
+                    mq.delay(100)
                     mob.DoTarget()
+                    mq.delay(50) -- allow time for target to actually change before checking buffs populated on new target
                     mq.delay('1s', function() return mq.TLO.Target.BuffsPopulated() end)
+                    local pct_hp = mq.TLO.Target.PctHPs()
                     if mq.TLO.Target() and mq.TLO.Target.Type() == 'Corpse' then
                         TARGETS[id] = nil
-                    elseif not mq.TLO.Target.Mezzed() and mq.TLO.Target.PctHPs() > 85 then
+                    elseif pct_hp and pct_hp > 85 then
                         local assist_spawn = get_assist_spawn()
                         if assist_spawn.ID() ~= id then
-                            mq.cmd('/attack off')
                             MEZ_TARGET_NAME = mob.CleanName()
+                            MEZ_TARGET_ID = id
                             printf('Mezzing >>> %s (%d) <<<', mob.Name(), mob.ID())
-                            mq.delay(5)
                             cast_mez(spells['mezst']['name'])
+                            debug('STMEZ setting meztimer mob_id %d', id)
                             TARGETS[id].meztimer = current_time()
                             mq.doevents('event_mezimmune')
-                        end 
+                            mq.doevents('event_mezresist')
+                            MEZ_TARGET_ID = 0
+                            MEZ_TARGET_NAME = nil
+                        end
                     end
                 elseif mob.Type() == 'Corpse' then
                     TARGETS[id] = nil
@@ -798,6 +829,41 @@ local function check_mez()
     end
     check_target()
     attack()
+end
+
+local function check_mez_old()
+    if MOB_COUNT >= AE_MEZ_COUNT and MEZAE then
+        if mq.TLO.Me.Gem(spells['mezae']['name'])() and mq.TLO.Me.GemTimer(spells['mezae']['name'])() == 0 then
+            printf('AE Mezzing (MOB_COUNT=%d)', MOB_COUNT)
+            cast(spells['mezae']['name'])
+        end
+    end
+    if not MEZST or MOB_COUNT <= 1 then return end
+    mq.cmd('/attack off')
+    for id,_ in pairs(TARGETS) do
+        local mob = mq.TLO.Spawn('id '..id)
+        if mob() then
+            if id ~= ASSIST_TARGET_ID and mob.Level() <= 123 and mob.Type() == 'NPC' then
+                mob.DoTarget()
+                if mq.TLO.Target() and mq.TLO.Target.Type() == 'Corpse' then
+                    TARGETS[id] = nil
+                elseif not mq.TLO.Target.Mezzed() then
+                    local assist_spawn = get_assist_spawn()
+                    if assist_spawn.ID() ~= id then
+                        printf('Mezzing >>> %s (%d) <<<', mob.Name(), mob.ID())
+                        mq.delay(5)
+                        cast(spells['mezst']['name'], true, true)
+                    end 
+                end
+            elseif mob.Type() == 'Corpse' then
+                TARGETS[id] = nil
+            end
+        end
+    end
+    mq.cmd('/squelch /target clear')
+    if ASSIST_TARGET_ID > 0 then
+        mq.cmdf('/mqtarget id %d', ASSIST_TARGET_ID)
+    end
 end
 
 -- Casts alliance if we are fighting, alliance is enabled, the spell is ready, alliance isn't already on the mob, there is > 1 necro in group or raid, and we have at least a few dots on the mob.
@@ -834,14 +900,16 @@ local function is_dot_ready(spellId, spellName)
     if not mq.TLO.Me.Gem(spellName)() or not mq.TLO.Me.GemTimer(spellName)() == 0  then
         return false
     end
-    if not mq.TLO.Target() or mq.TLO.Target.ID() ~= ASSIST_TARGET_ID then return false end
+    if not mq.TLO.Target() or mq.TLO.Target.ID() ~= ASSIST_TARGET_ID or mq.TLO.Target.Type() == 'Corpse' then return false end
 
     songDuration = mq.TLO.Target.MyBuffDuration(spellName)()
     if not is_target_dotted_with(spellId, spellName) then
         -- target does not have the dot, we are ready
+        debug('song ready %s', spellName)
         return true
     else
         if not songDuration then
+            debug('song ready %s', spellName)
             return true
         end
     end
@@ -852,10 +920,10 @@ end
 local function is_song_ready(spellId, spellName)
     local songDuration = 0
     local remainingCastTime = 0
-    if mq.TLO.Spell(spellName).Mana() and mq.TLO.Spell(spellName).Mana() > mq.TLO.Me.CurrentMana() then
+    if mq.TLO.Spell(spellName).Mana() > mq.TLO.Me.CurrentMana() or (mq.TLO.Spell(spellName).Mana() > 1000 and mq.TLO.Me.PctMana() < MIN_MANA) then
         return false
     end
-    if mq.TLO.Spell(spellName).EnduranceCost() and mq.TLO.Spell(spellName).EnduranceCost() > mq.TLO.Me.CurrentEndurance() then
+    if mq.TLO.Spell(spellName).EnduranceCost() > mq.TLO.Me.CurrentEndurance() or (mq.TLO.Spell(spellName).EnduranceCost() > 1000 and mq.TLO.Me.PctEndurance() < MIN_END) then
         return false
     end
     if mq.TLO.Spell(spellName).TargetType() == 'Single' then
@@ -865,17 +933,21 @@ local function is_song_ready(spellId, spellName)
     if not mq.TLO.Me.Gem(spellName)() or mq.TLO.Me.GemTimer(spellName)() > 0 then
         return false
     end
-    if spellName == spells['crescendo']['name'] and mq.TLO.Me.Buff(spells['crescendo']['name'])() then
+    if spellName == spells['crescendo']['name'] and (mq.TLO.Me.Buff(spells['crescendo']['name'])() or not timer_expired(crescendo_timer, 50)) then
         -- buggy song that doesn't like to go on CD
         return false
     end
 
     songDuration = mq.TLO.Me.Song(spellName).Duration()
     if not songDuration then
+        debug('song ready %s', spellName)
         return true
     else
-        remainingCastTime = mq.TLO.Spell(spellName).CastTime()
-        return songDuration < remainingCastTime + 3000
+        cast_time = mq.TLO.Spell(spellName).MyCastTime()
+        if songDuration < cast_time + 3000 then
+            debug('song ready %s', spellName)
+        end
+        return songDuration < cast_time + 3000
     end
 end
 
@@ -886,7 +958,9 @@ local function find_next_song()
         local spell_id = song['id']
         local spell_name = song['name']
         if is_song_ready(spell_id, spell_name) then
-            return song
+            if spell_name ~= 'Composite Psalm' or mq.TLO.Target() then
+                return song
+            end
         end
     end
     return nil -- we found no missing dot that was ready to cast, so return nothing
@@ -1024,7 +1098,7 @@ local function try_burn()
     -- Some items use Timer() and some use IsItemReady(), this seems to be mixed bag.
     -- Test them both for each item, and see which one(s) actually work.
     if is_burn_condition_met() then
-        
+
         if USE_EPIC == 'burn' then
             use_epic()
         end
@@ -1116,7 +1190,7 @@ local function check_buffs()
 end
 
 local function rest()
-    if not is_fighting() and not mq.TLO.Me.Sitting() and not mq.TLO.Me.Moving() and mq.TLO.Me.PctMana() < 60 and not mq.TLO.Me.Casting() and mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', CAMP_RADIUS))() == 0 then
+    if not is_fighting() and not mq.TLO.Me.Sitting() and not mq.TLO.Me.Moving() and (mq.TLO.Me.PctMana() < 60 or mq.TLO.Me.PctEndurance() < 60) and not mq.TLO.Me.Casting() and mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', CAMP_RADIUS))() == 0 then
         mq.cmd('/sit')
     end
 end
@@ -1137,7 +1211,7 @@ end
 
 local check_spell_timer = 0
 local function check_spell_set()
-    if is_fighting() or mq.TLO.Me.Moving() or am_i_dead() then return end
+    if is_fighting() or mq.TLO.Me.Moving() or am_i_dead() or BYOS then return end
     if SPELL_SET_LOADED ~= SPELL_SET or timer_expired(check_spell_timer, 30) then
         if SPELL_SET == 'melee' then
             if mq.TLO.Me.Gem(1)() ~= spells['aria']['name'] then swap_spell(spells['aria']['name'], 1) end
@@ -1313,6 +1387,7 @@ local function draw_right_pane_window()
         RALLY_GROUP = draw_check_box('Rallying Group', '##rallygroup', RALLY_GROUP, 'Use Rallying Group AA')
         MEZST = draw_check_box('Mez ST', '##mezst', MEZST, 'Mez single target')
         MEZAE = draw_check_box('Mez AE', '##mezae', MEZAE, 'Mez AOE')
+        BYOS = draw_check_box('BYOS', '##byos', BYOS, 'Bring your own spells')
     end
     ImGui.EndChild()
 end
@@ -1463,13 +1538,18 @@ local function event_dead()
 end
 local function event_mezbreak(line, mob, breaker)
     printf('\ay%s\ax mez broken by \ag%s\ax', mob, breaker)
-    TARGETS={}
+    --TARGETS={}
 end
 local function event_mezimmune(line)
     if MEZ_TARGET_NAME then
         printf('Added to MEZ_IMMUNE: \ay%s', MEZ_TARGET_NAME)
         MEZ_IMMUNES[MEZ_TARGET_NAME] = 1
-        MEZ_TARGET_NAME = nil
+    end
+end
+local function event_mezresist(line, mob)
+    if MEZ_TARGET_NAME and mob == MEZ_TARGET_NAME then
+        printf('MEZ RESIST >>> %s <<<', MEZ_TARGET_NAME)
+        TARGETS[MEZ_TARGET_ID].meztimer = 0
     end
 end
 mq.event('event_dead_released', '#*#Returning to Bind Location#*#', event_dead)
@@ -1477,14 +1557,15 @@ mq.event('event_dead', 'You died.', event_dead)
 mq.event('event_dead_slain', 'You have been slain by#*#', event_dead)
 mq.event('event_mezbreak', '#1# has been awakened by #2#.', event_mezbreak)
 mq.event('event_mezimmune', 'Your target cannot be mesmerized#*#', event_mezimmune)
+mq.event('event_mezimmune', '#1# resisted your#*#slumber of the diabo#*#', event_mezresist)
 
 mq.imgui.init('Bard Bot 1.0', bardbot_ui)
 
 load_settings()
 
 mq.TLO.Lua.Turbo(500)
-mq.cmd('/stick set verbosity off')
-mq.cmd('/plugin melee unload noauto')
+mq.cmd('/squelch /stick set verbosity off')
+mq.cmd('/squelch /plugin melee unload noauto')
 
 local debug_timer = 0
 local selos_timer = 0
@@ -1492,11 +1573,19 @@ local selos_timer = 0
 while true do
     if DEBUG and timer_expired(debug_timer, 3) then
         debug('main loop: PAUSED=%s, Me.Invis=%s', PAUSED, mq.TLO.Me.Invis())
+        debug('#TARGETS: %d, MOB_COUNT: %d', table_size(TARGETS), MOB_COUNT)
         debug_timer = current_time()
     end
-    
+
     clean_targets()
-    if not mq.TLO.Target() and mq.TLO.Me.Combat() then mq.cmd('/attack off') end
+    if not mq.TLO.Target() and mq.TLO.Me.Combat() then
+        ASSIST_TARGET_ID = 0
+        mq.cmd('/attack off')
+    end
+    if mq.TLO.Target() and mq.TLO.Target.Type() == 'Corpse' then
+        ASSIST_TARGET_ID = 0
+        mq.cmd('/squelch /mqtarget clear')
+    end
     -- Process death events
     mq.doevents()
     -- do active combat assist things when not paused and not invis
@@ -1523,15 +1612,17 @@ while true do
             attack()
             -- begin actual combat stuff
             send_pet()
-            cycle_songs()
+            if mq.TLO.Me.CombatState() ~= 'ACTIVE' and mq.TLO.Me.CombatState() ~= 'RESTING' then
+                cycle_songs()
+            end
             mash()
             -- pop a bunch of burn stuff if burn conditions are met
             try_burn()
             -- try not to run OOM
             check_aggro()
-            check_mana()
-            check_buffs()
         end
+        check_mana()
+        check_buffs()
         rest()
         mq.delay(1)
     elseif not PAUSED and mq.TLO.Me.Invis() then
