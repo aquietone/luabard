@@ -79,21 +79,22 @@ local SPELLSETS = {melee=1,caster=1,meleedot=1}
 local ASSISTS = {group=1,raid1=1,raid2=1,raid3=1}
 local EPIC_OPTS = {always=1,shm=1,burn=1,never=1}
 local OPTS = {
-    CHASE_TARGET='',
+    MODE='manual',
+    CHASETARGET='',
     CHASEDISTANCE=30,
     CAMPRADIUS=60,
     ASSIST='group',
     AUTOASSISTAT=98,
     SPELLSET='melee',
     BURNALWAYS=false, -- burn as burns become available
-    BURN_PCT=0, -- delay burn until mob below Pct HP, 0 ignores %.
+    BURNPCT=0, -- delay burn until mob below Pct HP, 0 ignores %.
     BURNALLNAMED=false, -- enable automatic burn on named mobs
     BURNCOUNT=5, -- number of mobs to trigger burns
-    USE_ALLIANCE=false, -- enable use of alliance spell
+    USEALLIANCE=false, -- enable use of alliance spell
     SWITCHWITHMA=true,
-    USE_SWARM=false, -- not implemented
-    RALLY_GROUP=false,
-    USE_FADE=false,
+    USESWARM=false, -- not implemented
+    RALLYGROUP=false,
+    USEFADE=false,
     MEZST=true,
     MEZAE=true,
     USEEPIC='always',
@@ -422,21 +423,21 @@ local function load_settings()
     if not file_exists(SETTINGS_FILE) then return end
     local settings = assert(loadfile(SETTINGS_FILE))()
     if settings['MODE'] ~= nil then OPTS.MODE = settings['MODE'] end
-    if settings['CHASE_TARGET'] ~= nil then OPTS.CHASE_TARGET = settings['CHASE_TARGET'] end
+    if settings['CHASETARGET'] ~= nil then OPTS.CHASETARGET = settings['CHASETARGET'] end
     if settings['CHASEDISTANCE'] ~= nil then OPTS.CHASEDISTANCE = settings['CHASEDISTANCE'] end
     if settings['CAMPRADIUS'] ~= nil then OPTS.CAMPRADIUS = settings['CAMPRADIUS'] end
     if settings['ASSIST'] ~= nil then OPTS.ASSIST = settings['ASSIST'] end
     if settings['AUTOASSISTAT'] ~= nil then OPTS.AUTOASSISTAT = settings['AUTOASSISTAT'] end
     if settings['SPELLSET'] ~= nil then OPTS.SPELLSET = settings['SPELLSET'] end
     if settings['BURNALWAYS'] ~= nil then OPTS.BURNALWAYS = settings['BURNALWAYS'] end
-    if settings['BURN_PCT'] ~= nil then OPTS.BURN_PCT = settings['BURN_PCT'] end
+    if settings['BURNPCT'] ~= nil then OPTS.BURNPCT = settings['BURNPCT'] end
     if settings['BURNALLNAMED'] ~= nil then OPTS.BURNALLNAMED = settings['BURNALLNAMED'] end
     if settings['BURNCOUNT'] ~= nil then OPTS.BURNCOUNT = settings['BURNCOUNT'] end
-    if settings['USE_ALLIANCE'] ~= nil then OPTS.USE_ALLIANCE = settings['USE_ALLIANCE'] end
+    if settings['USEALLIANCE'] ~= nil then OPTS.USEALLIANCE = settings['USEALLIANCE'] end
     if settings['SWITCHWITHMA'] ~= nil then OPTS.SWITCHWITHMA = settings['SWITCHWITHMA'] end
-    if settings['USE_SWARM'] ~= nil then OPTS.USE_SWARM = settings['USE_SWARM'] end
-    if settings['RALLY_GROUP'] ~= nil then OPTS.RALLY_GROUP = settings['RALLY_GROUP'] end
-    if settings['USE_FADE'] ~= nil then OPTS.USE_FADE = settings['USE_FADE'] end
+    if settings['USESWARM'] ~= nil then OPTS.USESWARM = settings['USESWARM'] end
+    if settings['RALLYGROUP'] ~= nil then OPTS.RALLYGROUP = settings['RALLYGROUP'] end
+    if settings['USEFADE'] ~= nil then OPTS.USEFADE = settings['USEFADE'] end
     if settings['MEZST'] ~= nil then OPTS.MEZST = settings['MEZST'] end
     if settings['MEZAE'] ~= nil then OPTS.MEZAE = settings['MEZAE'] end
     if settings['USEEPIC'] ~= nil then OPTS.USEEPIC = settings['USEEPIC'] end
@@ -501,7 +502,7 @@ end
 local function check_chase()
     if OPTS.MODE ~= 'chase' then return end
     if am_i_dead() or mq.TLO.Stick.Active() then return end
-    local chase_spawn = mq.TLO.Spawn('pc ='..OPTS.CHASE_TARGET)
+    local chase_spawn = mq.TLO.Spawn('pc ='..OPTS.CHASETARGET)
     local me_x = mq.TLO.Me.X()
     local me_y = mq.TLO.Me.Y()
     local chase_x = chase_spawn.X()
@@ -509,7 +510,7 @@ local function check_chase()
     if not chase_x or not chase_y then return end
     if check_distance(me_x, me_y, chase_x, chase_y) > OPTS.CHASEDISTANCE then
         if not mq.TLO.Nav.Active() then
-            mq.cmdf('/nav spawn pc =%s | log=off', OPTS.CHASE_TARGET)
+            mq.cmdf('/nav spawn pc =%s | log=off', OPTS.CHASETARGET)
         end
     end
 end
@@ -804,7 +805,7 @@ end
 
 -- Casts alliance if we are fighting, alliance is enabled, the spell is ready, alliance isn't already on the mob, there is > 1 necro in group or raid, and we have at least a few dots on the mob.
 local function try_alliance()
-    if OPTS.USE_ALLIANCE then
+    if OPTS.USEALLIANCE then
         if mq.TLO.Spell(spells['alliance']['name']).Mana() > mq.TLO.Me.CurrentMana() then
             return false
         end
@@ -1018,7 +1019,7 @@ local function is_burn_condition_met()
             burn_active_timer = current_time()
             burn_active = true
             return true
-        elseif OPTS.BURN_PCT ~= 0 and mq.TLO.Target.PctHPs() < OPTS.BURN_PCT then
+        elseif OPTS.BURNPCT ~= 0 and mq.TLO.Target.PctHPs() < OPTS.BURNPCT then
             printf('\arActivating Burns (percent HP)\ax')
             burn_active_timer = current_time()
             burn_active = true
@@ -1084,7 +1085,7 @@ end
 
 local check_aggro_timer = 0
 local function check_aggro()
-    if OPTS.USE_FADE and is_fighting() and mq.TLO.Target() then
+    if OPTS.USEFADE and is_fighting() and mq.TLO.Target() then
         if mq.TLO.Me.TargetOfTarget.ID() == mq.TLO.Me.ID() or timer_expired(check_aggro_timer, 10) then
             if mq.TLO.Me.PctAggro() >= 70 then
                 use_aa(fade['name'], fade['id'])
@@ -1146,7 +1147,7 @@ local function pause_for_rally()
 end
 
 local check_spell_timer = 0
-local function check_SPELLSET()
+local function check_spell_set()
     if is_fighting() or mq.TLO.Me.Moving() or am_i_dead() or OPTS.BYOS then return end
     if SPELLSET_LOADED ~= OPTS.SPELLSET or timer_expired(check_spell_timer, 30) then
         if OPTS.SPELLSET == 'melee' then
@@ -1304,10 +1305,10 @@ local function draw_left_pane_window()
         OPTS.ASSIST = draw_combo_box('Assist', OPTS.ASSIST, ASSISTS, true)
         OPTS.AUTOASSISTAT = draw_input_int('Assist %', '##assistat', OPTS.AUTOASSISTAT, 'Percent HP to assist at')
         OPTS.CAMPRADIUS = draw_input_int('Camp Radius', '##campradius', OPTS.CAMPRADIUS, 'Camp radius to assist within')
-        OPTS.CHASE_TARGET = draw_input_text('Chase Target', '##chasetarget', OPTS.CHASE_TARGET, 'Chase Target')
+        OPTS.CHASETARGET = draw_input_text('Chase Target', '##chasetarget', OPTS.CHASETARGET, 'Chase Target')
         OPTS.CHASEDISTANCE = draw_input_int('Chase Distance', '##chasedist', OPTS.CHASEDISTANCE, 'Distance to follow chase target')
         OPTS.USEEPIC = draw_combo_box('Epic', OPTS.USEEPIC, EPIC_OPTS, true)
-        OPTS.BURN_PCT = draw_input_int('Burn Percent', '##burnpct', OPTS.BURN_PCT, 'Percent health to begin burns')
+        OPTS.BURNPCT = draw_input_int('Burn Percent', '##burnpct', OPTS.BURNPCT, 'Percent health to begin burns')
         OPTS.BURNCOUNT = draw_input_int('Burn Count', '##burncnt', OPTS.BURNCOUNT, 'Trigger burns if this many mobs are on aggro')
     end
     ImGui.EndChild()
@@ -1318,9 +1319,9 @@ local function draw_right_pane_window()
     if ImGui.BeginChild("right", x, y-1, true) then
         OPTS.BURNALWAYS = draw_check_box('Burn Always', '##burnalways', OPTS.BURNALWAYS, 'Always be burning')
         OPTS.BURNALLNAMED = draw_check_box('Burn Named', '##burnnamed', OPTS.BURNALLNAMED, 'Burn all named')
-        OPTS.USE_ALLIANCE = draw_check_box('Alliance', '##alliance', OPTS.USE_ALLIANCE, 'Use alliance spell')
+        OPTS.USEALLIANCE = draw_check_box('Alliance', '##alliance', OPTS.USEALLIANCE, 'Use alliance spell')
         OPTS.SWITCHWITHMA = draw_check_box('Switch With MA', '##switchwithma', OPTS.SWITCHWITHMA, 'Switch targets with MA')
-        OPTS.RALLY_GROUP = draw_check_box('Rallying Group', '##rallygroup', OPTS.RALLY_GROUP, 'Use Rallying Group AA')
+        OPTS.RALLYGROUP = draw_check_box('Rallying Group', '##rallygroup', OPTS.RALLYGROUP, 'Use Rallying Group AA')
         OPTS.MEZST = draw_check_box('Mez ST', '##mezst', OPTS.MEZST, 'Mez single target')
         OPTS.MEZAE = draw_check_box('Mez AE', '##mezae', OPTS.MEZAE, 'Mez AOE')
         OPTS.BYOS = draw_check_box('BYOS', '##byos', OPTS.BYOS, 'Bring your own spells')
@@ -1573,7 +1574,7 @@ while true do
             selos_timer = current_time()
         end
         -- ensure correct spells are loaded based on selected spell set
-        check_SPELLSET()
+        check_spell_set()
         -- check whether we need to return to camp
         check_camp()
         -- check whether we need to go chasing after the chase target
