@@ -52,7 +52,7 @@
     9. Engage burns if burn conditions met
     10. Use mana recovery stuff if low mana/end
 
-    Spell bar ordering can be adjusted by rearranging things in the "check_spell_set" function.
+    Spell bar ordering can be adjusted by rearranging things in the "check_SPELLSET" function.
 
     Other things to note:
     - Drops target if MA targets themself.
@@ -74,46 +74,40 @@ local mq = require('mq')
 --- @type ImGui
 require 'ImGui'
 
-local DEBUG = false
-local PAUSED = true -- controls the main combat loop
-
-local BURN_NOW = false -- toggled by /burnnow binding to burn immediately
-local BURN_ALWAYS = false -- burn as burns become available
-local BURN_PCT = 0 -- delay burn until mob below Pct HP, 0 ignores %.
-local BURN_NAMED = false -- enable automatic burn on named mobs
-local BURN_COUNT = 5 -- number of mobs to trigger burns
-
-local SPELL_SETS = {'melee','caster','meleedot'}
-local SPELL_SET = 'melee'
-
 local MODES = {'manual','assist','chase'}
-local MODE = 'manual'
-local CHASE_TARGET = ''
-local CHASE_DISTANCE = 15
+local SPELLSETS = {melee=1,caster=1,meleedot=1}
+local ASSISTS = {group=1,raid1=1,raid2=1,raid3=1}
+local EPIC_OPTS = {always=1,shm=1,burn=1,never=1}
+local OPTS = {
+    CHASE_TARGET='',
+    CHASEDISTANCE=30,
+    CAMPRADIUS=60,
+    ASSIST='group',
+    AUTOASSISTAT=98,
+    SPELLSET='melee',
+    BURNALWAYS=false, -- burn as burns become available
+    BURN_PCT=0, -- delay burn until mob below Pct HP, 0 ignores %.
+    BURNALLNAMED=false, -- enable automatic burn on named mobs
+    BURNCOUNT=5, -- number of mobs to trigger burns
+    USE_ALLIANCE=false, -- enable use of alliance spell
+    SWITCHWITHMA=true,
+    USE_SWARM=false, -- not implemented
+    RALLY_GROUP=false,
+    USE_FADE=false,
+    MEZST=true,
+    MEZAE=true,
+    USEEPIC='always',
+    BYOS=false,
+}
+local DEBUG=false
+local PAUSED=true -- controls the main combat loop
+local BURN_NOW = false -- toggled by /burnnow binding to burn immediately
 local CAMP = nil
-local CAMP_RADIUS = 60
-
-local ASSISTS = {'group','raid1','raid2','raid3'}
-local ASSIST = 'group'
-local ASSIST_AT = 99
-local SWITCH_WITH_MA = true
-
-local EPIC_OPTS = {'always','with shm','burn','never'}
-local USE_EPIC = 'always'
-local USE_ALLIANCE = true -- enable use of alliance spell
-local RALLY_GROUP = false
-local USE_FADE = false
-local USE_SWARM = true -- not implemented
-local BYOS = false
-
 local MIN_MANA = 15
 local MIN_END = 15
-
 local AE_MEZ_COUNT = 3
-local MEZST = true
-local MEZAE = true
 
-local SPELL_SET_LOADED = nil
+local SPELLSET_LOADED = nil
 local I_AM_DEAD = false
 
 local LOG_PREFIX = '\a-t[\ax\ayBardBot\ax\a-t]\ax '
@@ -127,6 +121,9 @@ end
 local function get_spellid_and_rank(spell_name)
     local spell_rank = mq.TLO.Spell(spell_name).RankName()
     return {['id']=mq.TLO.Spell(spell_rank).ID(), ['name']=spell_rank}
+end
+local function get_aaid_and_name(aa_name)
+    return {['id']=mq.TLO.Me.AltAbility(aa_name).ID(), ['name']=aa_name}
 end
 
 -- All spells ID + Rank name
@@ -153,7 +150,7 @@ local spells = {
     ['mezst']=get_spellid_and_rank('Slumber of the Diabo'),
     ['mezae']=get_spellid_and_rank('Wave of Nocturn'),
 }
-for name,spell in pairs(spells) do
+for _,spell in pairs(spells) do
     printf('%s (%s)', spell['name'], spell['id'])
 end
 
@@ -211,10 +208,6 @@ local songs = {
 local items = {}
 table.insert(items, mq.TLO.InvSlot('Chest').Item.ID())
 table.insert(items, mq.TLO.FindItem('Rage of Rolfron').ID())
-
-local function get_aaid_and_name(aa_name)
-    return {['id']=mq.TLO.Me.AltAbility(aa_name).ID(), ['name']=aa_name}
-end
 
 -- entries in the AAs table are pairs of {aa name, aa id}
 local burnAAs = {}
@@ -428,52 +421,30 @@ local SETTINGS_FILE = ('%s/bardbot_%s_%s.lua'):format(mq.configDir, mq.TLO.EverQ
 local function load_settings()
     if not file_exists(SETTINGS_FILE) then return end
     local settings = assert(loadfile(SETTINGS_FILE))()
-    if settings['MODE'] ~= nil then MODE = settings['MODE'] end
-    if settings['CHASE_TARGET'] ~= nil then CHASE_TARGET = settings['CHASE_TARGET'] end
-    if settings['CHASE_DISTANCE'] ~= nil then CHASE_DISTANCE = settings['CHASE_DISTANCE'] end
-    if settings['CAMP_RADIUS'] ~= nil then CAMP_RADIUS = settings['CAMP_RADIUS'] end
-    if settings['ASSIST'] ~= nil then ASSIST = settings['ASSIST'] end
-    if settings['ASSIST_AT'] ~= nil then ASSIST_AT = settings['ASSIST_AT'] end
-    if settings['SPELL_SET'] ~= nil then SPELL_SET = settings['SPELL_SET'] end
-    if settings['BURN_ALWAYS'] ~= nil then BURN_ALWAYS = settings['BURN_ALWAYS'] end
-    if settings['BURN_PCT'] ~= nil then BURN_PCT = settings['BURN_PCT'] end
-    if settings['BURN_NAMED'] ~= nil then BURN_NAMED = settings['BURN_NAMED'] end
-    if settings['BURN_COUNT'] ~= nil then BURN_COUNT = settings['BURN_COUNT'] end
-    if settings['USE_ALLIANCE'] ~= nil then USE_ALLIANCE = settings['USE_ALLIANCE'] end
-    if settings['SWITCH_WITH_MA'] ~= nil then SWITCH_WITH_MA = settings['SWITCH_WITH_MA'] end
-    if settings['USE_SWARM'] ~= nil then USE_SWARM = settings['USE_SWARM'] end
-    if settings['RALLY_GROUP'] ~= nil then RALLY_GROUP = settings['RALLY_GROUP'] end
-    if settings['USE_FADE'] ~= nil then USE_FADE = settings['USE_FADE'] end
-    if settings['MEZST'] ~= nil then MEZST = settings['MEZST'] end
-    if settings['MEZAE'] ~= nil then MEZAE = settings['MEZAE'] end
-    if settings['USE_EPIC'] ~= nil then USE_EPIC = settings['USE_EPIC'] end
-    if settings['BYOS'] ~= nil then USE_EPIC = settings['BYOS'] end
+    if settings['MODE'] ~= nil then OPTS.MODE = settings['MODE'] end
+    if settings['CHASE_TARGET'] ~= nil then OPTS.CHASE_TARGET = settings['CHASE_TARGET'] end
+    if settings['CHASEDISTANCE'] ~= nil then OPTS.CHASEDISTANCE = settings['CHASEDISTANCE'] end
+    if settings['CAMPRADIUS'] ~= nil then OPTS.CAMPRADIUS = settings['CAMPRADIUS'] end
+    if settings['ASSIST'] ~= nil then OPTS.ASSIST = settings['ASSIST'] end
+    if settings['AUTOASSISTAT'] ~= nil then OPTS.AUTOASSISTAT = settings['AUTOASSISTAT'] end
+    if settings['SPELLSET'] ~= nil then OPTS.SPELLSET = settings['SPELLSET'] end
+    if settings['BURNALWAYS'] ~= nil then OPTS.BURNALWAYS = settings['BURNALWAYS'] end
+    if settings['BURN_PCT'] ~= nil then OPTS.BURN_PCT = settings['BURN_PCT'] end
+    if settings['BURNALLNAMED'] ~= nil then OPTS.BURNALLNAMED = settings['BURNALLNAMED'] end
+    if settings['BURNCOUNT'] ~= nil then OPTS.BURNCOUNT = settings['BURNCOUNT'] end
+    if settings['USE_ALLIANCE'] ~= nil then OPTS.USE_ALLIANCE = settings['USE_ALLIANCE'] end
+    if settings['SWITCHWITHMA'] ~= nil then OPTS.SWITCHWITHMA = settings['SWITCHWITHMA'] end
+    if settings['USE_SWARM'] ~= nil then OPTS.USE_SWARM = settings['USE_SWARM'] end
+    if settings['RALLY_GROUP'] ~= nil then OPTS.RALLY_GROUP = settings['RALLY_GROUP'] end
+    if settings['USE_FADE'] ~= nil then OPTS.USE_FADE = settings['USE_FADE'] end
+    if settings['MEZST'] ~= nil then OPTS.MEZST = settings['MEZST'] end
+    if settings['MEZAE'] ~= nil then OPTS.MEZAE = settings['MEZAE'] end
+    if settings['USEEPIC'] ~= nil then OPTS.USEEPIC = settings['USEEPIC'] end
+    if settings['BYOS'] ~= nil then OPTS.BYOS = settings['BYOS'] end
 end
 
 local function save_settings()
-    local settings = {
-        MODE=MODE,
-        CHASE_TARGET=CHASE_TARGET,
-        CHASE_DISTANCE=CHASE_DISTANCE,
-        CAMP_RADIUS=CAMP_RADIUS,
-        ASSIST=ASSIST,
-        ASSIST_AT=ASSIST_AT,
-        SPELL_SET=SPELL_SET,
-        BURN_ALWAYS=BURN_ALWAYS,
-        BURN_PCT=BURN_PCT,
-        BURN_NAMED=BURN_NAMED,
-        BURN_COUNT=BURN_COUNT,
-        USE_ALLIANCE=USE_ALLIANCE,
-        SWITCH_WITH_MA=SWITCH_WITH_MA,
-        USE_SWARM=USE_SWARM,
-        RALLY_GROUP=RALLY_GROUP,
-        USE_FADE=USE_FADE,
-        MEZST=MEZST,
-        MEZAE=MEZAE,
-        USE_EPIC=USE_EPIC,
-        BYOS=BYOS,
-    }
-    persistence.store(SETTINGS_FILE, settings)
+    persistence.store(SETTINGS_FILE, OPTS)
 end
 
 local function current_time()
@@ -528,23 +499,23 @@ local function am_i_dead()
 end
 
 local function check_chase()
-    if MODE ~= 'chase' then return end
+    if OPTS.MODE ~= 'chase' then return end
     if am_i_dead() or mq.TLO.Stick.Active() then return end
-    local chase_spawn = mq.TLO.Spawn('pc ='..CHASE_TARGET)
+    local chase_spawn = mq.TLO.Spawn('pc ='..OPTS.CHASE_TARGET)
     local me_x = mq.TLO.Me.X()
     local me_y = mq.TLO.Me.Y()
     local chase_x = chase_spawn.X()
     local chase_y = chase_spawn.Y()
     if not chase_x or not chase_y then return end
-    if check_distance(me_x, me_y, chase_x, chase_y) > CHASE_DISTANCE then
+    if check_distance(me_x, me_y, chase_x, chase_y) > OPTS.CHASEDISTANCE then
         if not mq.TLO.Nav.Active() then
-            mq.cmdf('/nav spawn pc =%s | log=off', CHASE_TARGET)
+            mq.cmdf('/nav spawn pc =%s | log=off', OPTS.CHASE_TARGET)
         end
     end
 end
 
 local function check_camp()
-    if MODE ~= 'assist' then return end
+    if OPTS.MODE ~= 'assist' then return end
     if am_i_dead() then return end
     if is_fighting() or not CAMP then return end
     if mq.TLO.Zone.ID() ~= CAMP.ZoneID then
@@ -560,15 +531,15 @@ local function check_camp()
 end
 
 local function set_camp(reset)
-    if (MODE == 'assist' and not CAMP) or reset then
+    if (OPTS.MODE == 'assist' and not CAMP) or reset then
         CAMP = {
             ['X']=mq.TLO.Me.X(),
             ['Y']=mq.TLO.Me.Y(),
             ['Z']=mq.TLO.Me.Z(),
             ['ZoneID']=mq.TLO.Zone.ID()
         }
-        mq.cmdf('/mapf campradius %d', CAMP_RADIUS)
-    elseif MODE ~= 'assist' and CAMP then
+        mq.cmdf('/mapf campradius %d', OPTS.CAMPRADIUS)
+    elseif OPTS.MODE ~= 'assist' and CAMP then
         CAMP = nil
         mq.cmd('/mapf campradius 0')
     end
@@ -583,12 +554,12 @@ local xtar_count = 'xtarhater radius %d zradius 50'
 local xtar_spawn = '%d, xtarhater radius %d zradius 50'
 local function mob_radar()
     local num_corpses = 0
-    num_corpses = mq.TLO.SpawnCount(xtar_corpse_count:format(CAMP_RADIUS))()
-    MOB_COUNT = mq.TLO.SpawnCount(xtar_count:format(CAMP_RADIUS))() - num_corpses
+    num_corpses = mq.TLO.SpawnCount(xtar_corpse_count:format(OPTS.CAMPRADIUS))()
+    MOB_COUNT = mq.TLO.SpawnCount(xtar_count:format(OPTS.CAMPRADIUS))() - num_corpses
     if MOB_COUNT > 0 then
         for i=1,MOB_COUNT do
             if i > 13 then break end
-            local mob = mq.TLO.NearestSpawn(xtar_spawn:format(i, CAMP_RADIUS))
+            local mob = mq.TLO.NearestSpawn(xtar_spawn:format(i, OPTS.CAMPRADIUS))
             local mob_id = mob.ID()
             if mob_id > 0 then
                 if not mob() or mob.Type() == 'Corpse' then
@@ -618,13 +589,13 @@ end
 
 local function get_assist_spawn()
     local assist_target = nil
-    if ASSIST == 'group' then
+    if OPTS.ASSIST == 'group' then
         assist_target = mq.TLO.Me.GroupAssistTarget
-    elseif ASSIST == 'raid1' then
+    elseif OPTS.ASSIST == 'raid1' then
         assist_target = mq.TLO.Me.RaidAssistTarget(1)
-    elseif ASSIST == 'raid2' then
+    elseif OPTS.ASSIST == 'raid2' then
         assist_target = mq.TLO.Me.RaidAssistTarget(2)
-    elseif ASSIST == 'raid3' then
+    elseif OPTS.ASSIST == 'raid3' then
         assist_target = mq.TLO.Me.RaidAssistTarget(3)
     end
     return assist_target
@@ -639,10 +610,10 @@ local function should_assist(assist_target)
     local mob_x = assist_target.X()
     local mob_y = assist_target.Y()
     if not id or id == 0 or not hp or hp == 0 or not mob_x or not mob_y then return false end
-    if mob_type == 'NPC' and hp < ASSIST_AT then
-        if CAMP and check_distance(CAMP.X, CAMP.Y, mob_x, mob_y) <= CAMP_RADIUS then
+    if mob_type == 'NPC' and hp < OPTS.AUTOASSISTAT then
+        if CAMP and check_distance(CAMP.X, CAMP.Y, mob_x, mob_y) <= OPTS.CAMPRADIUS then
             return true
-        elseif not CAMP and check_distance(mq.TLO.Me.X(), mq.TLO.Me.Y(), mob_x, mob_y) <= CAMP_RADIUS then
+        elseif not CAMP and check_distance(mq.TLO.Me.X(), mq.TLO.Me.Y(), mob_x, mob_y) <= OPTS.CAMPRADIUS then
             return true
         end
     else
@@ -656,7 +627,7 @@ local synergy_timer = 0
 local stick_timer = 0
 local function check_target()
     if am_i_dead() then return end
-    if MODE ~= 'manual' or SWITCH_WITH_MA then
+    if OPTS.MODE ~= 'manual' or OPTS.SWITCHWITHMA then
         if not mq.TLO.Group.MainAssist() then return end
         local assist_target = get_assist_spawn()
         if not assist_target() then return end
@@ -669,7 +640,7 @@ local function check_target()
             if mq.TLO.Target.ID() == assist_target.ID() then
                 ASSIST_TARGET_ID = assist_target.ID()
                 return
-            elseif not SWITCH_WITH_MA then return end
+            elseif not OPTS.SWITCHWITHMA then return end
         end
         if ASSIST_TARGET_ID == assist_target.ID() then
             assist_target.DoTarget()
@@ -691,7 +662,7 @@ end
 local function get_combat_position()
     local target_id = mq.TLO.Target.ID()
     local target_distance = mq.TLO.Target.Distance3D()
-    if not target_id or target_id == 0 or (target_distance and target_distance > CAMP_RADIUS) or PAUSED then
+    if not target_id or target_id == 0 or (target_distance and target_distance > OPTS.CAMPRADIUS) or PAUSED then
         return
     end
     mq.cmdf('/nav id %d log=off', target_id)
@@ -772,7 +743,7 @@ local MEZ_IMMUNES = {}
 local MEZ_TARGET_NAME = nil
 local MEZ_TARGET_ID = 0
 local function check_mez()
-    if MOB_COUNT >= AE_MEZ_COUNT and MEZAE then
+    if MOB_COUNT >= AE_MEZ_COUNT and OPTS.MEZAE then
         if mq.TLO.Me.Gem(spells['mezae']['name'])() and mq.TLO.Me.GemTimer(spells['mezae']['name'])() == 0 then
             printf('AE Mezzing (MOB_COUNT=%d)', MOB_COUNT)
             cast(spells['mezae']['name'])
@@ -791,7 +762,7 @@ local function check_mez()
             end
         end
     end
-    if not MEZST or MOB_COUNT <= 1 or not mq.TLO.Me.Gem(spells['mezst']['name'])() then return end
+    if not OPTS.MEZST or MOB_COUNT <= 1 or not mq.TLO.Me.Gem(spells['mezst']['name'])() then return end
     for id,mobdata in pairs(TARGETS) do
         if id ~= ASSIST_TARGET_ID and (mobdata['meztimer'] == 0 or timer_expired(mobdata['meztimer'], 30)) then
             debug('[%s] meztimer: %s timer_expired: %s', id, mobdata['meztimer'], timer_expired(mobdata['meztimer'], 30))
@@ -831,44 +802,9 @@ local function check_mez()
     attack()
 end
 
-local function check_mez_old()
-    if MOB_COUNT >= AE_MEZ_COUNT and MEZAE then
-        if mq.TLO.Me.Gem(spells['mezae']['name'])() and mq.TLO.Me.GemTimer(spells['mezae']['name'])() == 0 then
-            printf('AE Mezzing (MOB_COUNT=%d)', MOB_COUNT)
-            cast(spells['mezae']['name'])
-        end
-    end
-    if not MEZST or MOB_COUNT <= 1 then return end
-    mq.cmd('/attack off')
-    for id,_ in pairs(TARGETS) do
-        local mob = mq.TLO.Spawn('id '..id)
-        if mob() then
-            if id ~= ASSIST_TARGET_ID and mob.Level() <= 123 and mob.Type() == 'NPC' then
-                mob.DoTarget()
-                if mq.TLO.Target() and mq.TLO.Target.Type() == 'Corpse' then
-                    TARGETS[id] = nil
-                elseif not mq.TLO.Target.Mezzed() then
-                    local assist_spawn = get_assist_spawn()
-                    if assist_spawn.ID() ~= id then
-                        printf('Mezzing >>> %s (%d) <<<', mob.Name(), mob.ID())
-                        mq.delay(5)
-                        cast(spells['mezst']['name'], true, true)
-                    end 
-                end
-            elseif mob.Type() == 'Corpse' then
-                TARGETS[id] = nil
-            end
-        end
-    end
-    mq.cmd('/squelch /target clear')
-    if ASSIST_TARGET_ID > 0 then
-        mq.cmdf('/mqtarget id %d', ASSIST_TARGET_ID)
-    end
-end
-
 -- Casts alliance if we are fighting, alliance is enabled, the spell is ready, alliance isn't already on the mob, there is > 1 necro in group or raid, and we have at least a few dots on the mob.
 local function try_alliance()
-    if USE_ALLIANCE then
+    if OPTS.USE_ALLIANCE then
         if mq.TLO.Spell(spells['alliance']['name']).Mana() > mq.TLO.Me.CurrentMana() then
             return false
         end
@@ -954,7 +890,7 @@ end
 local function find_next_song()
     if try_alliance() then return nil end
     if cast_synergy() then return nil end
-    for _,song in ipairs(songs[SPELL_SET]) do -- iterates over the dots array. ipairs(dots) returns 2 values, an index and its value in the array. we don't care about the index, we just want the dot
+    for _,song in ipairs(songs[OPTS.SPELLSET]) do -- iterates over the dots array. ipairs(dots) returns 2 values, an index and its value in the array. we don't care about the index, we just want the dot
         local spell_id = song['id']
         local spell_name = song['name']
         if is_song_ready(spell_id, spell_name) then
@@ -1025,7 +961,7 @@ local function use_aa(aa, number)
 end
 
 local fierceeye = get_aaid_and_name('Fierce Eye')
-local function use_epic()
+local function USEEPIC()
     local epic = mq.TLO.FindItem('=Blade of Vesagran')
     local fierceeye_rdy = mq.TLO.Me.AltAbilityReady(fierceeye['name'])()
     if epic.Timer() == '0' and fierceeye_rdy then
@@ -1036,10 +972,10 @@ end
 
 local function mash()
     if is_fighting() or should_assist() then
-        if USE_EPIC == 'always' then
-            use_epic()
-        elseif USE_EPIC == 'with shm' and mq.TLO.Me.Song('Prophet\'s Gift of the Ruchu')() then
-            use_epic()
+        if OPTS.USEEPIC == 'always' then
+            USEEPIC()
+        elseif OPTS.USEEPIC == 'shm' and mq.TLO.Me.Song('Prophet\'s Gift of the Ruchu')() then
+            USEEPIC()
         end
         for _,aa in ipairs(mashAAs) do
             use_aa(aa['name'], aa['id'])
@@ -1063,7 +999,7 @@ local function is_burn_condition_met()
         BURN_NOW = false
         return true
     elseif is_fighting() then
-        if BURN_ALWAYS then
+        if OPTS.BURNALWAYS then
             -- With burn always, save twincast for when hand of death is ready, otherwise let other burns fire
             if mq.TLO.Me.AltAbilityReady('Heretic\'s Twincast')() and not mq.TLO.Me.AltAbilityReady('Hand of Death')() then
                 return false
@@ -1072,17 +1008,17 @@ local function is_burn_condition_met()
             else
                 return true
             end
-        elseif BURN_NAMED and mq.TLO.Target.Named() then
+        elseif OPTS.BURNALLNAMED and mq.TLO.Target.Named() then
             printf('\arActivating Burns (named)\ax')
             burn_active_timer = current_time()
             burn_active = true
             return true
-        elseif mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', CAMP_RADIUS))() >= BURN_COUNT then
-            printf('\arActivating Burns (mob count > %d)\ax', BURN_COUNT)
+        elseif mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', OPTS.CAMPRADIUS))() >= OPTS.BURNCOUNT then
+            printf('\arActivating Burns (mob count > %d)\ax', OPTS.BURNCOUNT)
             burn_active_timer = current_time()
             burn_active = true
             return true
-        elseif BURN_PCT ~= 0 and mq.TLO.Target.PctHPs() < BURN_PCT then
+        elseif OPTS.BURN_PCT ~= 0 and mq.TLO.Target.PctHPs() < OPTS.BURN_PCT then
             printf('\arActivating Burns (percent HP)\ax')
             burn_active_timer = current_time()
             burn_active = true
@@ -1099,8 +1035,8 @@ local function try_burn()
     -- Test them both for each item, and see which one(s) actually work.
     if is_burn_condition_met() then
 
-        if USE_EPIC == 'burn' then
-            use_epic()
+        if OPTS.USEEPIC == 'burn' then
+            USEEPIC()
         end
 
         --[[
@@ -1148,7 +1084,7 @@ end
 
 local check_aggro_timer = 0
 local function check_aggro()
-    if USE_FADE and is_fighting() and mq.TLO.Target() then
+    if OPTS.USE_FADE and is_fighting() and mq.TLO.Target() then
         if mq.TLO.Me.TargetOfTarget.ID() == mq.TLO.Me.ID() or timer_expired(check_aggro_timer, 10) then
             if mq.TLO.Me.PctAggro() >= 70 then
                 use_aa(fade['name'], fade['id'])
@@ -1174,7 +1110,7 @@ end
 local function check_buffs()
     if am_i_dead() then return end
     if is_fighting() then return end
-    if mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', CAMP_RADIUS))() > 0 then return end
+    if mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', OPTS.CAMPRADIUS))() > 0 then return end
     if not mq.TLO.Me.Aura(spells['aura']['name'])() then
         local restore_gem = nil
         if not mq.TLO.Me.Gem(spells['aura']['name'])() then
@@ -1190,7 +1126,7 @@ local function check_buffs()
 end
 
 local function rest()
-    if not is_fighting() and not mq.TLO.Me.Sitting() and not mq.TLO.Me.Moving() and (mq.TLO.Me.PctMana() < 60 or mq.TLO.Me.PctEndurance() < 60) and not mq.TLO.Me.Casting() and mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', CAMP_RADIUS))() == 0 then
+    if not is_fighting() and not mq.TLO.Me.Sitting() and not mq.TLO.Me.Moving() and (mq.TLO.Me.PctMana() < 60 or mq.TLO.Me.PctEndurance() < 60) and not mq.TLO.Me.Casting() and mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', OPTS.CAMPRADIUS))() == 0 then
         mq.cmd('/sit')
     end
 end
@@ -1210,10 +1146,10 @@ local function pause_for_rally()
 end
 
 local check_spell_timer = 0
-local function check_spell_set()
-    if is_fighting() or mq.TLO.Me.Moving() or am_i_dead() or BYOS then return end
-    if SPELL_SET_LOADED ~= SPELL_SET or timer_expired(check_spell_timer, 30) then
-        if SPELL_SET == 'melee' then
+local function check_SPELLSET()
+    if is_fighting() or mq.TLO.Me.Moving() or am_i_dead() or OPTS.BYOS then return end
+    if SPELLSET_LOADED ~= OPTS.SPELLSET or timer_expired(check_spell_timer, 30) then
+        if OPTS.SPELLSET == 'melee' then
             if mq.TLO.Me.Gem(1)() ~= spells['aria']['name'] then swap_spell(spells['aria']['name'], 1) end
             if mq.TLO.Me.Gem(2)() ~= spells['arcane']['name'] then swap_spell(spells['arcane']['name'], 2) end
             if mq.TLO.Me.Gem(3)() ~= spells['spiteful']['name'] then swap_spell(spells['spiteful']['name'], 3) end
@@ -1227,8 +1163,8 @@ local function check_spell_set()
             if mq.TLO.Me.Gem(11)() ~= spells['pulse']['name'] then swap_spell(spells['pulse']['name'], 11) end
             if mq.TLO.Me.Gem(12)() ~= 'Composite Psalm' then swap_spell(spells['composite']['name'], 12) end
             if mq.TLO.Me.Gem(13)() ~= spells['dirge']['name'] then swap_spell(spells['dirge']['name'], 13) end
-            SPELL_SET_LOADED = SPELL_SET
-        elseif SPELL_SET == 'caster' then
+            SPELLSET_LOADED = OPTS.SPELLSET
+        elseif OPTS.SPELLSET == 'caster' then
             if mq.TLO.Me.Gem(1)() ~= spells['aria']['name'] then swap_spell(spells['aria']['name'], 1) end
             if mq.TLO.Me.Gem(2)() ~= spells['arcane']['name'] then swap_spell(spells['arcane']['name'], 2) end
             if mq.TLO.Me.Gem(3)() ~= spells['firenukebuff']['name'] then swap_spell(spells['firenukebuff']['name'], 3) end
@@ -1242,8 +1178,8 @@ local function check_spell_set()
             if mq.TLO.Me.Gem(11)() ~= spells['pulse']['name'] then swap_spell(spells['pulse']['name'], 11) end
             if mq.TLO.Me.Gem(12)() ~= 'Composite Psalm' then swap_spell(spells['composite']['name'], 12) end
             if mq.TLO.Me.Gem(13)() ~= spells['dirge']['name'] then swap_spell(spells['dirge']['name'], 13) end
-            SPELL_SET_LOADED = SPELL_SET
-        elseif SPELL_SET == 'meleedot' then
+            SPELLSET_LOADED = OPTS.SPELLSET
+        elseif OPTS.SPELLSET == 'meleedot' then
             if mq.TLO.Me.Gem(1)() ~= spells['aria']['name'] then swap_spell(spells['aria']['name'], 1) end
             if mq.TLO.Me.Gem(2)() ~= spells['chantflame']['name'] then swap_spell(spells['chantflame']['name'], 2) end
             if mq.TLO.Me.Gem(3)() ~= spells['chantfrost']['name'] then swap_spell(spells['chantfrost']['name'], 3) end
@@ -1257,7 +1193,7 @@ local function check_spell_set()
             if mq.TLO.Me.Gem(11)() ~= spells['pulse']['name'] then swap_spell(spells['pulse']['name'], 11) end
             if mq.TLO.Me.Gem(12)() ~= 'Composite Psalm' then swap_spell(spells['composite']['name'], 12) end
             if mq.TLO.Me.Gem(13)() ~= spells['dirge']['name'] then swap_spell(spells['dirge']['name'], 13) end
-            SPELL_SET_LOADED = SPELL_SET
+            SPELLSET_LOADED = OPTS.SPELLSET
         end
         check_spell_timer = current_time()
     end
@@ -1362,17 +1298,17 @@ end
 local function draw_left_pane_window()
     local _,y = ImGui.GetContentRegionAvail()
     if ImGui.BeginChild("left", left_pane_size, y-1, true) then
-        MODE = draw_combo_box('Mode', MODE, MODES)
+        OPTS.MODE = draw_combo_box('Mode', OPTS.MODE, MODES)
         set_camp()
-        SPELL_SET = draw_combo_box('Spell Set', SPELL_SET, SPELL_SETS)
-        ASSIST = draw_combo_box('Assist', ASSIST, ASSISTS)
-        ASSIST_AT = draw_input_int('Assist %', '##assistat', ASSIST_AT, 'Percent HP to assist at')
-        CAMP_RADIUS = draw_input_int('Camp Radius', '##campradius', CAMP_RADIUS, 'Camp radius to assist within')
-        CHASE_TARGET = draw_input_text('Chase Target', '##chasetarget', CHASE_TARGET, 'Chase Target')
-        CHASE_DISTANCE = draw_input_int('Chase Distance', '##chasedist', CHASE_DISTANCE, 'Distance to follow chase target')
-        USE_EPIC = draw_combo_box('Epic', USE_EPIC, EPIC_OPTS)
-        BURN_PCT = draw_input_int('Burn Percent', '##burnpct', BURN_PCT, 'Percent health to begin burns')
-        BURN_COUNT = draw_input_int('Burn Count', '##burncnt', BURN_COUNT, 'Trigger burns if this many mobs are on aggro')
+        OPTS.SPELLSET = draw_combo_box('Spell Set', OPTS.SPELLSET, SPELLSETS, true)
+        OPTS.ASSIST = draw_combo_box('Assist', OPTS.ASSIST, ASSISTS, true)
+        OPTS.AUTOASSISTAT = draw_input_int('Assist %', '##assistat', OPTS.AUTOASSISTAT, 'Percent HP to assist at')
+        OPTS.CAMPRADIUS = draw_input_int('Camp Radius', '##campradius', OPTS.CAMPRADIUS, 'Camp radius to assist within')
+        OPTS.CHASE_TARGET = draw_input_text('Chase Target', '##chasetarget', OPTS.CHASE_TARGET, 'Chase Target')
+        OPTS.CHASEDISTANCE = draw_input_int('Chase Distance', '##chasedist', OPTS.CHASEDISTANCE, 'Distance to follow chase target')
+        OPTS.USEEPIC = draw_combo_box('Epic', OPTS.USEEPIC, EPIC_OPTS, true)
+        OPTS.BURN_PCT = draw_input_int('Burn Percent', '##burnpct', OPTS.BURN_PCT, 'Percent health to begin burns')
+        OPTS.BURNCOUNT = draw_input_int('Burn Count', '##burncnt', OPTS.BURNCOUNT, 'Trigger burns if this many mobs are on aggro')
     end
     ImGui.EndChild()
 end
@@ -1380,14 +1316,14 @@ end
 local function draw_right_pane_window()
     local x,y = ImGui.GetContentRegionAvail()
     if ImGui.BeginChild("right", x, y-1, true) then
-        BURN_ALWAYS = draw_check_box('Burn Always', '##burnalways', BURN_ALWAYS, 'Always be burning')
-        BURN_NAMED = draw_check_box('Burn Named', '##burnnamed', BURN_NAMED, 'Burn all named')
-        USE_ALLIANCE = draw_check_box('Alliance', '##alliance', USE_ALLIANCE, 'Use alliance spell')
-        SWITCH_WITH_MA = draw_check_box('Switch With MA', '##switchwithma', SWITCH_WITH_MA, 'Switch targets with MA')
-        RALLY_GROUP = draw_check_box('Rallying Group', '##rallygroup', RALLY_GROUP, 'Use Rallying Group AA')
-        MEZST = draw_check_box('Mez ST', '##mezst', MEZST, 'Mez single target')
-        MEZAE = draw_check_box('Mez AE', '##mezae', MEZAE, 'Mez AOE')
-        BYOS = draw_check_box('BYOS', '##byos', BYOS, 'Bring your own spells')
+        OPTS.BURNALWAYS = draw_check_box('Burn Always', '##burnalways', OPTS.BURNALWAYS, 'Always be burning')
+        OPTS.BURNALLNAMED = draw_check_box('Burn Named', '##burnnamed', OPTS.BURNALLNAMED, 'Burn all named')
+        OPTS.USE_ALLIANCE = draw_check_box('Alliance', '##alliance', OPTS.USE_ALLIANCE, 'Use alliance spell')
+        OPTS.SWITCHWITHMA = draw_check_box('Switch With MA', '##switchwithma', OPTS.SWITCHWITHMA, 'Switch targets with MA')
+        OPTS.RALLY_GROUP = draw_check_box('Rallying Group', '##rallygroup', OPTS.RALLY_GROUP, 'Use Rallying Group AA')
+        OPTS.MEZST = draw_check_box('Mez ST', '##mezst', OPTS.MEZST, 'Mez single target')
+        OPTS.MEZAE = draw_check_box('Mez AE', '##mezae', OPTS.MEZAE, 'Mez AOE')
+        OPTS.BYOS = draw_check_box('BYOS', '##byos', OPTS.BYOS, 'Bring your own spells')
     end
     ImGui.EndChild()
 end
@@ -1449,14 +1385,14 @@ local function bardbot_ui()
                 ImGui.SameLine()
                 x,_ = ImGui.GetCursorPos()
                 ImGui.SetCursorPosX(90)
-                ImGui.TextColored(1, 1, 1, 1, MODE)
+                ImGui.TextColored(1, 1, 1, 1, OPTS.MODE)
 
                 ImGui.TextColored(1, 1, 0, 1, 'Camp:')
                 ImGui.SameLine()
                 x,_ = ImGui.GetCursorPos()
                 ImGui.SetCursorPosX(90)
                 if CAMP then
-                    ImGui.TextColored(1, 1, 0, 1, string.format('X: %.02f  Y: %.02f  Z: %.02f  Rad: %d', CAMP.X, CAMP.Y, CAMP.Z, CAMP_RADIUS))
+                    ImGui.TextColored(1, 1, 0, 1, string.format('X: %.02f  Y: %.02f  Z: %.02f  Rad: %d', CAMP.X, CAMP.Y, CAMP.Z, OPTS.CAMPRADIUS))
                 else
                     ImGui.TextColored(1, 0, 0, 1, '--')
                 end
@@ -1515,19 +1451,60 @@ local function brd_bind(...)
         open_gui = false
     elseif args[1] == 'mode' then
         if args[2] == '0' then
-            MODE = MODES[1]
+            OPTS.MODE = MODES[1]
             set_camp()
         elseif args[2] == '1' then
-            MODE = MODES[2]
+            OPTS.MODE = MODES[2]
             set_camp()
         elseif args[2] == '2' then
-            MODE = MODES[3]
+            OPTS.MODE = MODES[3]
             set_camp()
         end
     elseif args[1] == 'resetcamp' then
         set_camp(true)
     else
         -- some other argument, show or modify a setting
+        local opt = args[1]:upper()
+        local new_value = args[2]
+        if args[2] then
+            if opt == 'USEEPIC' then
+                if EPIC_OPTS[new_value] then
+                    printf('Setting %s to: %s', opt, new_value)
+                    OPTS[opt] = new_value
+                end
+            elseif opt == 'SPELLSET' then
+                if SPELLSETS[new_value] then
+                    printf('Setting %s to: %s', opt, new_value)
+                    OPTS[opt] = new_value
+                end
+            elseif opt == 'ASSIST' then
+                if ASSISTS[new_value] then
+                    printf('Setting %s to: %s', opt, new_value)
+                    OPTS[opt] = new_value
+                end
+            elseif type(OPTS[opt]) == 'boolean' then
+                if args[2] == '0' or args[2] == 'off' then
+                    printf('Setting %s to: false', opt)
+                    OPTS[opt] = false
+                elseif args[2] == '1' or args[2] == 'on' then
+                    printf('Setting %s to: true', opt)
+                    OPTS[opt] = true
+                end
+            elseif type(OPTS[opt]) == 'number' then
+                if tonumber(new_value) then
+                    printf('Setting %s to: %s', opt, tonumber(new_value))
+                    OPTS[opt] = tonumber(new_value)
+                end
+            else
+                printf('Unsupported command line option: %s %s', opt, new_value)
+            end
+        else
+            if OPTS[opt] ~= nil then
+                printf('%s: %s', opt, OPTS[opt])
+            else
+                printf('Unrecognized option: %s', opt)
+            end
+        end
     end
 end
 mq.bind('/brd', brd_bind)
@@ -1538,7 +1515,6 @@ local function event_dead()
 end
 local function event_mezbreak(line, mob, breaker)
     printf('\ay%s\ax mez broken by \ag%s\ax', mob, breaker)
-    --TARGETS={}
 end
 local function event_mezimmune(line)
     if MEZ_TARGET_NAME then
@@ -1597,7 +1573,7 @@ while true do
             selos_timer = current_time()
         end
         -- ensure correct spells are loaded based on selected spell set
-        check_spell_set()
+        check_SPELLSET()
         -- check whether we need to return to camp
         check_camp()
         -- check whether we need to go chasing after the chase target
@@ -1627,7 +1603,7 @@ while true do
         mq.delay(1)
     elseif not PAUSED and mq.TLO.Me.Invis() then
         -- stay in camp or stay chasing chase target if not paused but invis
-        if MODE == 'assist' and should_assist() then mq.cmd('/makemevis') end
+        if OPTS.MODE == 'assist' and should_assist() then mq.cmd('/makemevis') end
         check_camp()
         check_chase()
         mq.delay(50)
