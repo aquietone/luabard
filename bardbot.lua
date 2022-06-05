@@ -83,8 +83,6 @@ local BURN_PCT = 0 -- delay burn until mob below Pct HP, 0 ignores %.
 local BURN_NAMED = false -- enable automatic burn on named mobs
 local BURN_COUNT = 5 -- number of mobs to trigger burns
 
-local ALLIANCE = true -- enable use of alliance spell
-
 local SPELL_SETS = {'melee','caster','meleedot'}
 local SPELL_SET = 'melee'
 
@@ -95,13 +93,17 @@ local CHASE_DISTANCE = 15
 local CAMP = nil
 local CAMP_RADIUS = 60
 
-local EPIC_OPTS = {'always','with shm','burn','never'}
-local USE_EPIC = 'always'
-
 local ASSISTS = {'group','raid1','raid2','raid3'}
 local ASSIST = 'group'
-local SWITCH_WITH_MA = true
 local ASSIST_AT = 99
+local SWITCH_WITH_MA = true
+
+local EPIC_OPTS = {'always','with shm','burn','never'}
+local USE_EPIC = 'always'
+local USE_ALLIANCE = true -- enable use of alliance spell
+local RALLY_GROUP = false
+local USE_FADE = false
+local USE_SWARM = true -- not implemented
 
 local MIN_MANA = 15
 local MIN_END = 15
@@ -109,12 +111,8 @@ local MIN_END = 15
 local AE_MEZ_COUNT = 3
 local MEZST = true
 local MEZAE = true
-local SWARM = true
-local RALLY_GROUP = false
-local DO_FADE = false
 
 local SPELL_SET_LOADED = nil
-
 local I_AM_DEAD = false
 
 local LOG_PREFIX = '\a-t[\ax\ayBardBot\ax\a-t]\ax '
@@ -431,11 +429,11 @@ local function load_settings()
     if settings['BURN_PCT'] ~= nil then BURN_PCT = settings['BURN_PCT'] end
     if settings['BURN_NAMED'] ~= nil then BURN_NAMED = settings['BURN_NAMED'] end
     if settings['BURN_COUNT'] ~= nil then BURN_COUNT = settings['BURN_COUNT'] end
-    if settings['ALLIANCE'] ~= nil then ALLIANCE = settings['ALLIANCE'] end
+    if settings['USE_ALLIANCE'] ~= nil then USE_ALLIANCE = settings['USE_ALLIANCE'] end
     if settings['SWITCH_WITH_MA'] ~= nil then SWITCH_WITH_MA = settings['SWITCH_WITH_MA'] end
-    if settings['SWARM'] ~= nil then SWARM = settings['SWARM'] end
+    if settings['USE_SWARM'] ~= nil then USE_SWARM = settings['USE_SWARM'] end
     if settings['RALLY_GROUP'] ~= nil then RALLY_GROUP = settings['RALLY_GROUP'] end
-    if settings['DO_FADE'] ~= nil then DO_FADE = settings['DO_FADE'] end
+    if settings['USE_FADE'] ~= nil then USE_FADE = settings['USE_FADE'] end
     if settings['MEZST'] ~= nil then MEZST = settings['MEZST'] end
     if settings['MEZAE'] ~= nil then MEZAE = settings['MEZAE'] end
     if settings['USE_EPIC'] ~= nil then USE_EPIC = settings['USE_EPIC'] end
@@ -454,11 +452,11 @@ local function save_settings()
         BURN_PCT=BURN_PCT,
         BURN_NAMED=BURN_NAMED,
         BURN_COUNT=BURN_COUNT,
-        ALLIANCE=ALLIANCE,
+        USE_ALLIANCE=USE_ALLIANCE,
         SWITCH_WITH_MA=SWITCH_WITH_MA,
-        SWARM=SWARM,
+        USE_SWARM=USE_SWARM,
         RALLY_GROUP=RALLY_GROUP,
-        DO_FADE=DO_FADE,
+        USE_FADE=USE_FADE,
         MEZST=MEZST,
         MEZAE=MEZAE,
         USE_EPIC=USE_EPIC,
@@ -745,7 +743,12 @@ local function check_target()
         if is_fighting() then
             if mq.TLO.Target.ID() == assist_target.ID() then
                 ASSIST_TARGET_ID = assist_target.ID()
+                return
             elseif not SWITCH_WITH_MA then return end
+        end
+        if ASSIST_TARGET_ID == assist_target.ID() then
+            assist_target.DoTarget()
+            return
         end
         if mq.TLO.Target.ID() ~= assist_target.ID() and should_assist(assist_target) then
             ASSIST_TARGET_ID = assist_target.ID()
@@ -831,6 +834,7 @@ local function cast_mez(spell_name, requires_target, requires_los)
     if ASSIST_TARGET_ID > 0 then
         mq.cmdf('/mqtarget id %d', ASSIST_TARGET_ID)
         mq.cmd('/attack on')
+        mq.cmd('/squelch /stick loose moveback 50%% uw')
     end
     mq.delay(3200, function() return not mq.TLO.Me.Casting() end)
     mq.cmd('/stopcast')
@@ -870,14 +874,14 @@ local function check_mez()
     end
     if ASSIST_TARGET_ID > 0 and mq.TLO.Target.ID() ~= ASSIST_TARGET_ID then
         mq.cmdf('/mqtarget id %d', ASSIST_TARGET_ID)
-    else
-        mq.cmd('/squelch /target clear')
+        mq.cmd('/attack on')
+        mq.cmd('/squelch /stick loose moveback 50%% uw')
     end
 end
 
 -- Casts alliance if we are fighting, alliance is enabled, the spell is ready, alliance isn't already on the mob, there is > 1 necro in group or raid, and we have at least a few dots on the mob.
 local function try_alliance()
-    if ALLIANCE then
+    if USE_ALLIANCE then
         if mq.TLO.Spell(spells['alliance']['name']).Mana() > mq.TLO.Me.CurrentMana() then
             return false
         end
@@ -1098,7 +1102,7 @@ end
 
 local check_aggro_timer = 0
 local function check_aggro()
-    if DO_FADE and is_fighting() and mq.TLO.Target() then
+    if USE_FADE and is_fighting() and mq.TLO.Target() then
         if mq.TLO.Me.TargetOfTarget.ID() == mq.TLO.Me.ID() or os.difftime(os.time(os.date("!*t")), check_aggro_timer) > 10 then
             if mq.TLO.Me.PctAggro() >= 70 then
                 use_aa(fade['name'], fade['id'])
@@ -1332,7 +1336,7 @@ local function draw_right_pane_window()
     if ImGui.BeginChild("right", x, y-1, true) then
         BURN_ALWAYS = draw_check_box('Burn Always', '##burnalways', BURN_ALWAYS, 'Always be burning')
         BURN_NAMED = draw_check_box('Burn Named', '##burnnamed', BURN_NAMED, 'Burn all named')
-        ALLIANCE = draw_check_box('Alliance', '##alliance', ALLIANCE, 'Use alliance spell')
+        USE_ALLIANCE = draw_check_box('Alliance', '##alliance', USE_ALLIANCE, 'Use alliance spell')
         SWITCH_WITH_MA = draw_check_box('Switch With MA', '##switchwithma', SWITCH_WITH_MA, 'Switch targets with MA')
         RALLY_GROUP = draw_check_box('Rallying Group', '##rallygroup', RALLY_GROUP, 'Use Rallying Group AA')
         MEZST = draw_check_box('Mez ST', '##mezst', MEZST, 'Mez single target')
@@ -1487,6 +1491,7 @@ local function event_dead()
 end
 local function event_mezbreak(line, mob, breaker)
     printf('\ay%s\ax mez broken by \ag%s\ax', mob, breaker)
+    TARGETS={}
 end
 mq.event('event_dead_released', '#*#Returning to Bind Location#*#', event_dead)
 mq.event('event_dead', 'You died.', event_dead)
@@ -1514,6 +1519,7 @@ while true do
     -- Process death events
     wtf_timer = os.time(os.date("!*t"))
     clear_targets()
+    if not mq.TLO.Target() and mq.TLO.Me.Combat() then mq.cmd('/attack off') end
     mq.doevents()
     -- do active combat assist things when not paused and not invis
     if not PAUSED and not mq.TLO.Me.Invis() then
@@ -1583,6 +1589,7 @@ while true do
         mq.delay(1)
     elseif not PAUSED and mq.TLO.Me.Invis() then
         -- stay in camp or stay chasing chase target if not paused but invis
+        if MODE == 'assist' and should_assist() then mq.cmd('/makemevis') end
         check_camp()
         check_chase()
         mq.delay(50)
