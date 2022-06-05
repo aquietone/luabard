@@ -151,6 +151,8 @@ local spells = {
     ['alliance']=get_spellid_and_rank('Coalition of Sticks and Stones'),
     ['mezst']=get_spellid_and_rank('Slumber of the Diabo'),
     ['mezae']=get_spellid_and_rank('Wave of Nocturn'),
+    ['firenukebuff']=get_spellid_and_rank('Constance\'s Aria'),
+    ['firemagicdotbuff']=get_spellid_and_rank('Fyrthek Fior\'s Psalm of Potency'),
 }
 
 -- entries in the dots table are pairs of {spell id, spell name} in priority order
@@ -167,9 +169,10 @@ table.insert(melee, spells['dirge'])
 local caster = {}
 table.insert(caster, spells['composite'])
 table.insert(caster, spells['aria'])
-table.insert(caster, spells['spiteful'])
+table.insert(caster, spells['firenukebuff'])
 table.insert(caster, spells['suffering'])
 table.insert(caster, spells['warmarch'])
+table.insert(caster, spells['firemagicdotbuff'])
 table.insert(caster, spells['crescendo'])
 table.insert(caster, spells['pulse'])
 table.insert(caster, spells['dirge'])
@@ -575,8 +578,8 @@ local function check_camp()
     end
 end
 
-local function set_camp()
-    if MODE == 'assist' and not CAMP then
+local function set_camp(reset)
+    if (MODE == 'assist' and not CAMP) or reset then
         CAMP = {
             ['X']=mq.TLO.Me.X(),
             ['Y']=mq.TLO.Me.Y(),
@@ -645,7 +648,7 @@ local function mob_radar(check_type, radius)
                         num_corpses = num_corpses+1
                     elseif not TARGETS[mob_id] then
                         -- add mob_id to adds array
-                        TARGETS[mob_id] = 1
+                        TARGETS[mob_id] = {meztimer=0}
                     end
                 end
                 MOB_COUNT = MOB_COUNT - num_corpses
@@ -663,7 +666,7 @@ local function mob_radar(check_type, radius)
                         num_corpses = num_corpses+1
                     elseif not TARGETS[mob_id] then
                         -- add mob_id to adds array
-                        TARGETS[mob_id] = 1
+                        TARGETS[mob_id] = {meztimer=0}
                     end
                 end
                 MOB_COUNT = MOB_COUNT - num_corpses
@@ -727,6 +730,7 @@ end
 local send_pet_timer = 0
 local boastful_timer = 0
 local synergy_timer = 0
+local stick_timer = 0
 local function check_target()
     if am_i_dead() then return end
     if MODE ~= 'manual' or SWITCH_WITH_MA then
@@ -750,6 +754,7 @@ local function check_target()
             boastful_timer = 0
             synergy_timer = 0
             send_pet_timer = 0
+            stick_timer = 0
             printf('Assisting on >>> \ay%s\ax <<<', mq.TLO.Target.CleanName())
         end
     end
@@ -784,8 +789,9 @@ local function attack()
     if mq.TLO.Navigation.Active() then
         mq.cmd('/squelch /nav stop')
     end
-    if not mq.TLO.Stick.Active() then
-        mq.cmd('/stick loose moveback 50%% uw')
+    if not mq.TLO.Stick.Active() and os.difftime(os.time(os.date("!*t")), stick_timer) > 3 then
+        mq.cmd('/squelch /stick loose moveback 50%% uw')
+        stick_timer = os.time(os.date("!*t"))
     end
     if not mq.TLO.Me.Combat() then
         mq.cmd('/attack on')
@@ -811,6 +817,25 @@ local function cast(spell_name, requires_target, requires_los)
     mq.cmd('/stopcast')
 end
 
+local function cast_mez(spell_name, requires_target, requires_los)
+    if not in_control() or (requires_los and not mq.TLO.Target.LineOfSight()) then return end
+    if mq.TLO.Spell(spell_name).EnduranceCost() > 1000 and mq.TLO.Me.PctEndurance() < MIN_END then return end
+    if mq.TLO.Spell(spell_name).Mana() > 1000 and mq.TLO.Me.PctMana() < MIN_MANA then return end
+    printf('Casting \ar%s\ax', spell_name)
+    mq.cmdf('/cast "%s"', spell_name)
+    mq.delay(10)
+    if not mq.TLO.Me.Casting() then mq.cmdf('/cast %s', spell_name) end
+    mq.delay(10)
+    if not mq.TLO.Me.Casting() then mq.cmdf('/cast %s', spell_name) end
+    mq.delay(10)
+    if ASSIST_TARGET_ID > 0 then
+        mq.cmdf('/mqtarget id %d', ASSIST_TARGET_ID)
+        mq.cmd('/attack on')
+    end
+    mq.delay(3200, function() return not mq.TLO.Me.Casting() end)
+    mq.cmd('/stopcast')
+end
+
 local function check_mez()
     if MOB_COUNT >= AE_MEZ_COUNT and MEZAE then
         if mq.TLO.Me.Gem(spells['mezae']['name'])() and mq.TLO.Me.GemTimer(spells['mezae']['name'])() == 0 then
@@ -819,30 +844,34 @@ local function check_mez()
         end
     end
     if not MEZST or MOB_COUNT <= 1 then return end
-    mq.cmd('/attack off')
-    for id,_ in pairs(TARGETS) do
-        local mob = mq.TLO.Spawn('id '..id)
-        if mob() then
-            if id ~= ASSIST_TARGET_ID and mob.Level() <= 123 and mob.Type() == 'NPC' then
-                mob.DoTarget()
-                if mq.TLO.Target() and mq.TLO.Target.Type() == 'Corpse' then
+    for id,mobdata in pairs(TARGETS) do
+        if id ~= ASSIST_TARGET_ID and (mobdata['meztimer'] == 0 or os.difftime(os.time(os.date("!*t")), mobdata['meztimer']) < 10) then
+            local mob = mq.TLO.Spawn('id '..id)
+            if mob() then
+                if id ~= ASSIST_TARGET_ID and mob.Level() <= 123 and mob.Type() == 'NPC' then
+                    mq.cmd('/attack off')
+                    mob.DoTarget()
+                    if mq.TLO.Target() and mq.TLO.Target.Type() == 'Corpse' then
+                        TARGETS[id] = nil
+                    elseif not mq.TLO.Target.Mezzed() and mq.TLO.Target.PctHPs() > 85 then
+                        local assist_spawn = get_assist_spawn()
+                        if assist_spawn.ID() ~= id then
+                            printf('Mezzing >>> %s (%d) <<<', mob.Name(), mob.ID())
+                            mq.delay(5)
+                            cast_mez(spells['mezst']['name'], true, true)
+                            TARGETS[id].meztimer = os.time(os.date("!*t"))
+                        end 
+                    end
+                elseif mob.Type() == 'Corpse' then
                     TARGETS[id] = nil
-                elseif not mq.TLO.Target.Mezzed() then
-                    local assist_spawn = get_assist_spawn()
-                    if assist_spawn.ID() ~= id then
-                        printf('Mezzing >>> %s (%d) <<<', mob.Name(), mob.ID())
-                        mq.delay(5)
-                        cast(spells['mezst']['name'], true, true)
-                    end 
                 end
-            elseif mob.Type() == 'Corpse' then
-                TARGETS[id] = nil
             end
         end
     end
-    mq.cmd('/squelch /target clear')
-    if ASSIST_TARGET_ID > 0 then
+    if ASSIST_TARGET_ID > 0 and mq.TLO.Target.ID() ~= ASSIST_TARGET_ID then
         mq.cmdf('/mqtarget id %d', ASSIST_TARGET_ID)
+    else
+        mq.cmd('/squelch /target clear')
     end
 end
 
@@ -1074,6 +1103,8 @@ local function check_aggro()
             if mq.TLO.Me.PctAggro() >= 70 then
                 use_aa(fade['name'], fade['id'])
                 check_aggro_timer = os.time(os.date("!*t"))
+                mq.delay('1s')
+                mq.cmd('/makemevis')
             end
         end
     end
@@ -1150,11 +1181,11 @@ local function check_spell_set()
         elseif SPELL_SET == 'caster' then
             if mq.TLO.Me.Gem(1)() ~= spells['aria']['name'] then swap_spell(spells['aria']['name'], 1) end
             if mq.TLO.Me.Gem(2)() ~= spells['arcane']['name'] then swap_spell(spells['arcane']['name'], 2) end
-            if mq.TLO.Me.Gem(3)() ~= spells['spiteful']['name'] then swap_spell(spells['spiteful']['name'], 3) end
+            if mq.TLO.Me.Gem(3)() ~= spells['firenukebuff']['name'] then swap_spell(spells['firenukebuff']['name'], 3) end
             if mq.TLO.Me.Gem(4)() ~= spells['suffering']['name'] then swap_spell(spells['suffering']['name'], 4) end
             if mq.TLO.Me.Gem(5)() ~= spells['insult']['name'] then swap_spell(spells['insult']['name'], 5) end
             if mq.TLO.Me.Gem(6)() ~= spells['warmarch']['name'] then swap_spell(spells['warmarch']['name'], 6) end
-            if mq.TLO.Me.Gem(7)() ~= spells['sonata']['name'] then swap_spell(spells['sonata']['name'], 7) end
+            if mq.TLO.Me.Gem(7)() ~= spells['firemagicdotbuff']['name'] then swap_spell(spells['firemagicdotbuff']['name'], 7) end
             if mq.TLO.Me.Gem(8)() ~= spells['mezst']['name'] then swap_spell(spells['mezst']['name'], 8) end
             if mq.TLO.Me.Gem(9)() ~= spells['mezae']['name'] then swap_spell(spells['mezae']['name'], 9) end
             if mq.TLO.Me.Gem(10)() ~= spells['crescendo']['name'] then swap_spell(spells['crescendo']['name'], 10) end
@@ -1434,14 +1465,16 @@ local function brd_bind(...)
     elseif args[1] == 'mode' then
         if args[2] == '0' then
             MODE = MODES[1]
+            set_camp()
         elseif args[2] == '1' then
             MODE = MODES[2]
             set_camp()
         elseif args[2] == '2' then
             MODE = MODES[3]
+            set_camp()
         end
     elseif args[1] == 'resetcamp' then
-        set_camp()
+        set_camp(true)
     else
         -- some other argument, show or modify a setting
     end
@@ -1465,6 +1498,8 @@ mq.imgui.init('Bard Bot 1.0', bardbot_ui)
 load_settings()
 
 mq.TLO.Lua.Turbo(500)
+mq.cmd('/stick set verbosity off')
+mq.cmd('/plugin melee unload noauto')
 
 local debug_timer = 0
 local selos_timer = 0
