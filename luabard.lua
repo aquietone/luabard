@@ -14,6 +14,8 @@
     - caster:   Use caster adps songs + insult
     - meleedot: Use melee adps songs + insult + dots
 
+    - quickburn: 2 insults, dots, melee adps/caster adps.
+
     Commands:
     - /brd burnnow:    activate full burns immediately
     - /brd mode 0|1|2: set your mode. 0=manual, 1=assist, 2=chase
@@ -69,13 +71,13 @@
 --]]
 
 
---- @type mq
+---@type Mq
 local mq = require('mq')
 --- @type ImGui
 require 'ImGui'
 
 local MODES = {'manual','assist','chase'}
-local SPELLSETS = {melee=1,caster=1,meleedot=1}
+local SPELLSETS = {melee=1,caster=1,meleedot=1,quickburn=1}
 local ASSISTS = {group=1,raid1=1,raid2=1,raid3=1}
 local EPIC_OPTS = {always=1,shm=1,burn=1,never=1}
 local OPTS = {
@@ -130,7 +132,7 @@ end
 -- All spells ID + Rank name
 local spells = {
     ['aura']=get_spellid_and_rank('Aura of Pli Xin Liako'), -- spell dmg, overhaste, flurry, triple atk
-    ['composite']=get_spellid_and_rank('Composite Psalm'), -- DD+melee dmg bonus + small heal
+    ['composite']=get_spellid_and_rank('Ecliptic Psalm'), -- DD+melee dmg bonus + small heal
     ['aria']=get_spellid_and_rank('Aria of Pli Xin Liako'), -- spell dmg, overhaste, flurry, triple atk
     ['warmarch']=get_spellid_and_rank('War March of Centien Xi Va Xakra'), -- haste, atk, ds
     ['arcane']=get_spellid_and_rank('Arcane Harmony'), -- spell dmg proc
@@ -138,16 +140,17 @@ local spells = {
     ['spiteful']=get_spellid_and_rank('Von Deek\'s Spiteful Lyric'), -- AC
     ['pulse']=get_spellid_and_rank('Pulse of Nikolas'), -- heal focus + regen
     ['sonata']=get_spellid_and_rank('Xetheg\'s Spry Sonata'), -- spell shield, AC, dmg mitigation
-    ['dirge']=get_spellid_and_rank('Dirge of the Restless'), -- spell+melee dmg mitigation
+    ['dirge']=get_spellid_and_rank('Dirge of the Onokiwan'), -- spell+melee dmg mitigation
     ['firenukebuff']=get_spellid_and_rank('Constance\'s Aria'), -- inc fire DD
     ['firemagicdotbuff']=get_spellid_and_rank('Fyrthek Fior\'s Psalm of Potency'), -- inc fire+mag dot
     ['crescendo']=get_spellid_and_rank('Zelinstein\'s Lively Crescendo'), -- small heal hp, mana, end
-    ['insult']=get_spellid_and_rank('Yelinak\'s Insult'), -- synergy DD
+    ['insult']=get_spellid_and_rank('Nord\'s Disdain'), -- synergy DD
+    ['insult2']=get_spellid_and_rank('Yelinak\'s Insult'), -- synergy DD2
     ['chantflame']=get_spellid_and_rank('Shak Dathor\'s Chant of Flame'),
     ['chantfrost']=get_spellid_and_rank('Sylra Fris\' Chant of Frost'),
     ['chantdisease']=get_spellid_and_rank('Coagulus\' Chant of Disease'),
     ['chantpoison']=get_spellid_and_rank('Cruor\'s Chant of Poison'),
-    ['alliance']=get_spellid_and_rank('Coalition of Sticks and Stones'),
+    ['alliance']=get_spellid_and_rank('Conjunction of Sticks and Stones'),
     ['mezst']=get_spellid_and_rank('Slumber of the Diabo'),
     ['mezae']=get_spellid_and_rank('Wave of Nocturn'),
 }
@@ -199,10 +202,26 @@ table.insert(meleedot, spells['chantfrost'])
 -- mezst
 -- mezae
 
+local quickburn = {}
+table.insert(quickburn, spells['composite'])
+table.insert(quickburn, spells['crescendo'])
+table.insert(quickburn, spells['chantflame'])
+table.insert(quickburn, spells['aria'])
+table.insert(quickburn, spells['warmarch'])
+table.insert(quickburn, spells['chantdisease'])
+table.insert(quickburn, spells['suffering'])
+table.insert(quickburn, spells['dirge'])
+table.insert(quickburn, spells['chantfrost'])
+-- synergy
+-- synergy2
+-- mezst
+-- mezae
+
 local songs = {
     ['melee']=melee,
     ['caster']=caster,
     ['meleedot']=meleedot,
+    ['quickburn']=quickburn,
 }
 
 -- entries in the items table are MQ item datatypes
@@ -226,7 +245,7 @@ table.insert(burnAAs, get_aaid_and_name('Frenzied Kicks'))
 local mashAAs = {}
 table.insert(mashAAs, get_aaid_and_name('Cacophony'))
 table.insert(mashAAs, get_aaid_and_name('Boastful Bellow'))
-table.insert(mashAAs, get_aaid_and_name('Lyrical Prankster'))
+--table.insert(mashAAs, get_aaid_and_name('Lyrical Prankster'))
 table.insert(mashAAs, get_aaid_and_name('Song of Stone'))
 --table.insert(mashAAs, get_aaid_and_name('Vainglorious Shout'))
 
@@ -626,6 +645,9 @@ local send_pet_timer = 0
 local boastful_timer = 0
 local synergy_timer = 0
 local stick_timer = 0
+
+local synergy_timer_preset = 0
+
 local function check_target()
     if am_i_dead() then return end
     if OPTS.MODE ~= 'manual' or OPTS.SWITCHWITHMA then
@@ -817,8 +839,17 @@ local function try_alliance()
     return false
 end
 
+local super_burn_timer = 0
+local super_burn_duration = 15
+local synergy_timer_preset_default = 18
+local synergy_timer_preset_quickburn = 9
+local synergy_timer_preset_superburn = 1
+
+
 local function cast_synergy()
-    if timer_expired(synergy_timer, 18) then
+-- TODO add safeguard for mezzing mana
+    if timer_expired(synergy_timer, synergy_timer_preset) then
+        debug('synergy_timer_preset: %s',synergy_timer_preset)
         if not mq.TLO.Me.Song('Troubadour\'s Synergy')() and mq.TLO.Me.Gem(spells['insult']['name'])() and mq.TLO.Me.GemTimer(spells['insult']['name'])() == 0 then
             if mq.TLO.Spell(spells['insult']['name']).Mana() > mq.TLO.Me.CurrentMana() then
                 return false
@@ -826,7 +857,24 @@ local function cast_synergy()
             cast(spells['insult']['name'], true, true)
             synergy_timer = current_time()
             return true
+        elseif not mq.TLO.Me.Song('Troubadour\'s Synergy')() and mq.TLO.Me.Gem(spells['insult2']['name'])() and mq.TLO.Me.GemTimer(spells['insult2']['name'])() == 0 then
+            if mq.TLO.Spell(spells['insult2']['name']).Mana() > mq.TLO.Me.CurrentMana() then
+                return false
+            end
+            cast(spells['insult2']['name'], true, true)
+            synergy_timer = current_time()
+            return true
         end
+    end
+    if (super_burn_timer > 0) and (timer_expired(super_burn_timer, super_burn_duration)) then
+        if OPTS.SPELLSET == 'quickburn' then  
+            synergy_timer_preset = synergy_timer_preset_quickburn 
+        else 
+            synergy_timer_preset = synergy_timer_preset_default 
+        end
+        super_burn_timer = 0
+        printf('SuperBurn ended')
+        debug('synergy_timer reset to: %s',synergy_timer_preset)
     end
     return false
 end
@@ -1124,6 +1172,10 @@ local function check_buffs()
             swap_spell(restore_gem, 1)
         end
     end
+    -- add Songblade
+    if not mq.TLO.Me.Buff('Symphony of Battle')() then 
+        use_item(mq.TLO.FindItem('=Songblade of the Eternal'))
+    end
 end
 
 local function rest()
@@ -1192,6 +1244,21 @@ local function check_spell_set()
             if mq.TLO.Me.Gem(9)() ~= spells['mezae']['name'] then swap_spell(spells['mezae']['name'], 9) end
             if mq.TLO.Me.Gem(10)() ~= spells['crescendo']['name'] then swap_spell(spells['crescendo']['name'], 10) end
             if mq.TLO.Me.Gem(11)() ~= spells['pulse']['name'] then swap_spell(spells['pulse']['name'], 11) end
+            if mq.TLO.Me.Gem(12)() ~= 'Composite Psalm' then swap_spell(spells['composite']['name'], 12) end
+            if mq.TLO.Me.Gem(13)() ~= spells['dirge']['name'] then swap_spell(spells['dirge']['name'], 13) end
+            SPELLSET_LOADED = OPTS.SPELLSET
+        elseif OPTS.SPELLSET == 'quickburn' then
+            if mq.TLO.Me.Gem(1)() ~= spells['aria']['name'] then swap_spell(spells['aria']['name'], 1) end
+            if mq.TLO.Me.Gem(2)() ~= spells['chantflame']['name'] then swap_spell(spells['chantflame']['name'], 2) end
+            if mq.TLO.Me.Gem(3)() ~= spells['chantfrost']['name'] then swap_spell(spells['chantfrost']['name'], 3) end
+            if mq.TLO.Me.Gem(4)() ~= spells['suffering']['name'] then swap_spell(spells['suffering']['name'], 4) end
+            if mq.TLO.Me.Gem(5)() ~= spells['insult']['name'] then swap_spell(spells['insult']['name'], 5) end
+            if mq.TLO.Me.Gem(6)() ~= spells['warmarch']['name'] then swap_spell(spells['warmarch']['name'], 6) end
+            if mq.TLO.Me.Gem(7)() ~= spells['chantdisease']['name'] then swap_spell(spells['chantdisease']['name'], 7) end
+            if mq.TLO.Me.Gem(8)() ~= spells['mezst']['name'] then swap_spell(spells['mezst']['name'], 8) end
+            if mq.TLO.Me.Gem(9)() ~= spells['mezae']['name'] then swap_spell(spells['mezae']['name'], 9) end
+            if mq.TLO.Me.Gem(10)() ~= spells['crescendo']['name'] then swap_spell(spells['crescendo']['name'], 10) end
+            if mq.TLO.Me.Gem(11)() ~= spells['insult2']['name'] then swap_spell(spells['insult2']['name'], 11) end
             if mq.TLO.Me.Gem(12)() ~= 'Composite Psalm' then swap_spell(spells['composite']['name'], 12) end
             if mq.TLO.Me.Gem(13)() ~= spells['dirge']['name'] then swap_spell(spells['dirge']['name'], 13) end
             SPELLSET_LOADED = OPTS.SPELLSET
@@ -1321,7 +1388,7 @@ local function draw_right_pane_window()
         OPTS.BURNALLNAMED = draw_check_box('Burn Named', '##burnnamed', OPTS.BURNALLNAMED, 'Burn all named')
         OPTS.USEALLIANCE = draw_check_box('Alliance', '##alliance', OPTS.USEALLIANCE, 'Use alliance spell')
         OPTS.SWITCHWITHMA = draw_check_box('Switch With MA', '##switchwithma', OPTS.SWITCHWITHMA, 'Switch targets with MA')
-        OPTS.RALLYGROUP = draw_check_box('Rallying Group', '##rallygroup', OPTS.RALLYGROUP, 'Use Rallying Group AA')
+        --OPTS.RALLYGROUP = draw_check_box('Rallying Group', '##rallygroup', OPTS.RALLYGROUP, 'Use Rallying Group AA')
         OPTS.MEZST = draw_check_box('Mez ST', '##mezst', OPTS.MEZST, 'Mez single target')
         OPTS.MEZAE = draw_check_box('Mez AE', '##mezae', OPTS.MEZAE, 'Mez AOE')
         OPTS.BYOS = draw_check_box('BYOS', '##byos', OPTS.BYOS, 'Bring your own spells')
@@ -1349,6 +1416,12 @@ local function bardbot_ui()
         ImGui.SameLine()
         if ImGui.Button('Save Settings') then
             save_settings()
+        end
+        if ImGui.Button('SuperBurn') then
+            synergy_timer_preset = synergy_timer_preset_superburn
+            super_burn_timer = current_time()
+            printf('SuperBurn started for %d seconds',super_burn_duration)
+            debug('super_burn_timer: %s',super_burn_timer)
         end
         ImGui.SameLine()
         if DEBUG then
@@ -1459,6 +1532,9 @@ local function brd_bind(...)
             set_camp()
         elseif args[2] == '2' then
             OPTS.MODE = MODES[3]
+            set_camp()
+        elseif args[2] == '3' then
+            OPTS.MODE = MODES[4]
             set_camp()
         end
     elseif args[1] == 'resetcamp' then
