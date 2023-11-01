@@ -840,7 +840,7 @@ local function try_alliance()
 end
 
 local super_burn_timer = 0
-local super_burn_duration = 15
+local super_burn_duration = 60
 local synergy_timer_preset_default = 18
 local synergy_timer_preset_quickburn = 9
 local synergy_timer_preset_superburn = 1
