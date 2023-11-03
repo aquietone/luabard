@@ -101,6 +101,7 @@ local OPTS = {
     MEZAE=true,
     USEEPIC='always',
     BYOS=false,
+    SAFEMANA=20,
 }
 local DEBUG=false
 local PAUSED=true -- controls the main combat loop
@@ -461,6 +462,7 @@ local function load_settings()
     if settings['MEZAE'] ~= nil then OPTS.MEZAE = settings['MEZAE'] end
     if settings['USEEPIC'] ~= nil then OPTS.USEEPIC = settings['USEEPIC'] end
     if settings['BYOS'] ~= nil then OPTS.BYOS = settings['BYOS'] end
+    if settings['SAFEMANA'] ~= nil then OPTS.BYOS = settings['SAFEMANA'] end
 end
 
 local function save_settings()
@@ -503,7 +505,7 @@ local function is_target_dotted_with(spell_id, spell_name)
 end
 
 local function is_fighting() 
-    --if mq.TLO.Target.CleanName() == 'Combat Dummy Beza' then return true end -- Dev hook for target dummy
+    if mq.TLO.Target.CleanName() == 'Combat Dummy Beza' then return true end -- Dev hook for target dummy
     return (mq.TLO.Target.ID() ~= nil and (mq.TLO.Me.CombatState() ~= "ACTIVE" and mq.TLO.Me.CombatState() ~= "RESTING") and mq.TLO.Me.Standing() and not mq.TLO.Me.Feigning() and mq.TLO.Target.Type() == "NPC" and mq.TLO.Target.Type() ~= "Corpse")
 end
 
@@ -828,7 +830,7 @@ end
 -- Casts alliance if we are fighting, alliance is enabled, the spell is ready, alliance isn't already on the mob, there is > 1 necro in group or raid, and we have at least a few dots on the mob.
 local function try_alliance()
     if OPTS.USEALLIANCE then
-        if mq.TLO.Spell(spells['alliance']['name']).Mana() > mq.TLO.Me.CurrentMana() then
+        if (mq.TLO.Spell(spells['alliance']['name']).Mana() > mq.TLO.Me.CurrentMana()) or (mq.TLO.Me.PctMana() < OPTS.SAFEMANA) then
             return false
         end
         if mq.TLO.Me.Gem(spells['alliance']['name'])() and mq.TLO.Me.GemTimer(spells['alliance']['name'])() == 0  and not mq.TLO.Target.Buff(spells['alliance']['name'])() and mq.TLO.Spell(spells['alliance']['name']).StacksTarget() then
@@ -851,14 +853,14 @@ local function cast_synergy()
     if timer_expired(synergy_timer, synergy_timer_preset) then
         debug('synergy_timer_preset: %s',synergy_timer_preset)
         if not mq.TLO.Me.Song('Troubadour\'s Synergy')() and mq.TLO.Me.Gem(spells['insult']['name'])() and mq.TLO.Me.GemTimer(spells['insult']['name'])() == 0 then
-            if mq.TLO.Spell(spells['insult']['name']).Mana() > mq.TLO.Me.CurrentMana() then
+            if (mq.TLO.Spell(spells['insult']['name']).Mana() > mq.TLO.Me.CurrentMana()) or (mq.TLO.Me.PctMana() < OPTS.SAFEMANA) then
                 return false
             end
             cast(spells['insult']['name'], true, true)
             synergy_timer = current_time()
             return true
         elseif not mq.TLO.Me.Song('Troubadour\'s Synergy')() and mq.TLO.Me.Gem(spells['insult2']['name'])() and mq.TLO.Me.GemTimer(spells['insult2']['name'])() == 0 then
-            if mq.TLO.Spell(spells['insult2']['name']).Mana() > mq.TLO.Me.CurrentMana() then
+            if (mq.TLO.Spell(spells['insult2']['name']).Mana() > mq.TLO.Me.CurrentMana()) or (mq.TLO.Me.PctMana() < OPTS.SAFEMANA) then
                 return false
             end
             cast(spells['insult2']['name'], true, true)
@@ -1374,6 +1376,7 @@ local function draw_left_pane_window()
         OPTS.CAMPRADIUS = draw_input_int('Camp Radius', '##campradius', OPTS.CAMPRADIUS, 'Camp radius to assist within')
         OPTS.CHASETARGET = draw_input_text('Chase Target', '##chasetarget', OPTS.CHASETARGET, 'Chase Target')
         OPTS.CHASEDISTANCE = draw_input_int('Chase Distance', '##chasedist', OPTS.CHASEDISTANCE, 'Distance to follow chase target')
+        OPTS.SAFEMANA = draw_input_int('Safe Mana Level', '##safemana', OPTS.SAFEMANA, 'Does not waste mana with alliance/synergy if less (for mezzing)')
         OPTS.USEEPIC = draw_combo_box('Epic', OPTS.USEEPIC, EPIC_OPTS, true)
         OPTS.BURNPCT = draw_input_int('Burn Percent', '##burnpct', OPTS.BURNPCT, 'Percent health to begin burns')
         OPTS.BURNCOUNT = draw_input_int('Burn Count', '##burncnt', OPTS.BURNCOUNT, 'Trigger burns if this many mobs are on aggro')
@@ -1417,6 +1420,7 @@ local function bardbot_ui()
         if ImGui.Button('Save Settings') then
             save_settings()
         end
+        ImGui.SameLine()
         if ImGui.Button('SuperBurn') then
             synergy_timer_preset = synergy_timer_preset_superburn
             super_burn_timer = current_time()
