@@ -177,7 +177,7 @@ local caster = {}
 table.insert(caster, spells['composite'])
 table.insert(caster, spells['crescendo'])
 table.insert(caster, spells['aria'])
-table.insert(caster, spells['arcane'])
+
 table.insert(caster, spells['firenukebuff'])
 table.insert(caster, spells['suffering'])
 table.insert(caster, spells['warmarch'])
@@ -204,15 +204,16 @@ table.insert(meleedot, spells['chantfrost'])
 -- mezae
 
 local quickburn = {}
-table.insert(quickburn, spells['composite'])
-table.insert(quickburn, spells['crescendo'])
-table.insert(quickburn, spells['chantflame'])
 table.insert(quickburn, spells['aria'])
 table.insert(quickburn, spells['warmarch'])
-table.insert(quickburn, spells['chantdisease'])
 table.insert(quickburn, spells['suffering'])
-table.insert(quickburn, spells['dirge'])
+table.insert(quickburn, spells['arcane'])
 table.insert(quickburn, spells['chantfrost'])
+table.insert(quickburn, spells['chantflame'])
+table.insert(quickburn, spells['chantdisease'])
+table.insert(quickburn, spells['composite'])
+table.insert(quickburn, spells['chantpoison'])
+
 -- synergy
 -- synergy2
 -- mezst
@@ -505,7 +506,7 @@ local function is_target_dotted_with(spell_id, spell_name)
 end
 
 local function is_fighting() 
-    if mq.TLO.Target.CleanName() == 'Combat Dummy Beza' then return true end -- Dev hook for target dummy
+    --if mq.TLO.Target.CleanName() == 'Combat Dummy Azia' then return true end -- Dev hook for target dummy
     return (mq.TLO.Target.ID() ~= nil and (mq.TLO.Me.CombatState() ~= "ACTIVE" and mq.TLO.Me.CombatState() ~= "RESTING") and mq.TLO.Me.Standing() and not mq.TLO.Me.Feigning() and mq.TLO.Target.Type() == "NPC" and mq.TLO.Target.Type() ~= "Corpse")
 end
 
@@ -1259,10 +1260,10 @@ local function check_spell_set()
             if mq.TLO.Me.Gem(7)() ~= spells['chantdisease']['name'] then swap_spell(spells['chantdisease']['name'], 7) end
             if mq.TLO.Me.Gem(8)() ~= spells['mezst']['name'] then swap_spell(spells['mezst']['name'], 8) end
             if mq.TLO.Me.Gem(9)() ~= spells['mezae']['name'] then swap_spell(spells['mezae']['name'], 9) end
-            if mq.TLO.Me.Gem(10)() ~= spells['crescendo']['name'] then swap_spell(spells['crescendo']['name'], 10) end
+            if mq.TLO.Me.Gem(10)() ~= spells['chantpoison']['name'] then swap_spell(spells['chantpoison']['name'], 10) end
             if mq.TLO.Me.Gem(11)() ~= spells['insult2']['name'] then swap_spell(spells['insult2']['name'], 11) end
             if mq.TLO.Me.Gem(12)() ~= 'Composite Psalm' then swap_spell(spells['composite']['name'], 12) end
-            if mq.TLO.Me.Gem(13)() ~= spells['dirge']['name'] then swap_spell(spells['dirge']['name'], 13) end
+            if mq.TLO.Me.Gem(13)() ~= spells['arcane']['name'] then swap_spell(spells['arcane']['name'], 13) end
             SPELLSET_LOADED = OPTS.SPELLSET
         end
         check_spell_timer = current_time()
