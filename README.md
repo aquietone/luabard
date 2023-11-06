@@ -9,10 +9,10 @@ This script automates a level 120 Bard in a group setting. It expects to find al
 Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
 
 ## Installation
-Download bardbot.lua to your `mq/lua` folder.
+Download luabard.lua to your `mq/lua` folder.
 
 ## Usage
-Start the script with `/lua run bardbot`.
+Start the script with `/lua run luabard`.
 
 ## Support
 Open issues on this repository.
@@ -38,6 +38,7 @@ Spell Sets:
 - melee:    Use melee adps songs + insult
 - caster:   Use caster adps songs + insult
 - meleedot: Use melee adps songs + insult + dots
+- quickburn: Use melee/caster adps, dots + insult(s). Eats mana like there is no tomorrow.
 
 Commands:
 - /brd burnnow:    activate full burns immediately
@@ -53,7 +54,7 @@ Other Settings:
 - Burn Percent:   Target percent HP to engage burns. This applies to burn named and burn on proliferation proc. 0 ignores the percent check.
 - Burn Count:     Start burns if greater than or equal to this number of mobs in camp.
 - Epic:           Always, With Shaman, Burn, Never. When to use epic + fierce eye
-
+- SafeMana:       Set the level of mana you wish to preserve if you need mezzing.
 - Burn Always:    Engage burns as they are available.
 - Burn Named:     Engage burns on named mobs.
 - Alliance:       Use alliance if more than 1 necro in group or raid.
