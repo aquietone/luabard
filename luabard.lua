@@ -85,7 +85,7 @@ local OPTS = {
     CHASETARGET='',
     CHASEDISTANCE=30,
     CAMPRADIUS=60,
-    ASSIST='group',
+    ASSIST='group', -- if group, also does prankster
     AUTOASSISTAT=98,
     SPELLSET='melee',
     BURNALWAYS=false, -- burn as burns become available
@@ -102,6 +102,7 @@ local OPTS = {
     USEEPIC='always',
     BYOS=false,
     SAFEMANA=20,
+    COMBATMEM=false,
 }
 local DEBUG=false
 local PAUSED=true -- controls the main combat loop
@@ -131,14 +132,18 @@ local function get_aaid_and_name(aa_name)
 end
 
 -- All spells ID + Rank name
+-- mana regen!!
+
 local spells = {
     ['aura']=get_spellid_and_rank('Aura of Pli Xin Liako'), -- spell dmg, overhaste, flurry, triple atk
     ['composite']=get_spellid_and_rank('Ecliptic Psalm'), -- DD+melee dmg bonus + small heal
     ['aria']=get_spellid_and_rank('Aria of Pli Xin Liako'), -- spell dmg, overhaste, flurry, triple atk
     ['warmarch']=get_spellid_and_rank('War March of Centien Xi Va Xakra'), -- haste, atk, ds
+    ['warchorus']=get_spellid_and_rank('War Chorus of the Bloodbeast'), -- haste, atk, ds AOE
     ['arcane']=get_spellid_and_rank('Arcane Harmony'), -- spell dmg proc
     ['suffering']=get_spellid_and_rank('Shojralen\'s Song of Suffering'), -- melee dmg proc
     ['spiteful']=get_spellid_and_rank('Von Deek\'s Spiteful Lyric'), -- AC
+    ['manaregen']=get_spellid_and_rank('Chorus of Shei Vinitras'), -- HP/MANA/END AoE
     ['pulse']=get_spellid_and_rank('Pulse of Nikolas'), -- heal focus + regen
     ['sonata']=get_spellid_and_rank('Xetheg\'s Spry Sonata'), -- spell shield, AC, dmg mitigation
     ['dirge']=get_spellid_and_rank('Dirge of the Onokiwan'), -- spell+melee dmg mitigation
@@ -207,7 +212,7 @@ local quickburn = {}
 table.insert(quickburn, spells['aria'])
 table.insert(quickburn, spells['warmarch'])
 table.insert(quickburn, spells['suffering'])
-table.insert(quickburn, spells['arcane'])
+table.insert(quickburn, spells['manaregen'])
 table.insert(quickburn, spells['chantfrost'])
 table.insert(quickburn, spells['chantflame'])
 table.insert(quickburn, spells['chantdisease'])
@@ -247,8 +252,9 @@ table.insert(burnAAs, get_aaid_and_name('Frenzied Kicks'))
 local mashAAs = {}
 table.insert(mashAAs, get_aaid_and_name('Cacophony'))
 table.insert(mashAAs, get_aaid_and_name('Boastful Bellow'))
---table.insert(mashAAs, get_aaid_and_name('Lyrical Prankster'))
+table.insert(mashAAs, get_aaid_and_name('Lyrical Prankster')) --only when assisting in group
 table.insert(mashAAs, get_aaid_and_name('Song of Stone'))
+table.insert(mashAAs, get_aaid_and_name('Fierce Eye')) -- only when no epic
 --table.insert(mashAAs, get_aaid_and_name('Vainglorious Shout'))
 
 local selos = get_aaid_and_name('Selo\'s Sonata')
@@ -260,7 +266,7 @@ local rallyingcall = get_aaid_and_name('Rallying Call')
 --local item_horn = mq.TLO.FindItem('Miniature Horn of Unity') -- 10 minute CD
 -- Agro
 local fade = get_aaid_and_name('Fading Memories')
--- aa mez
+-- aa mez, not implemented
 local dirge = get_aaid_and_name('Dirge of the Sleepwalker')
 
 -- BEGIN lua table persistence
@@ -463,7 +469,8 @@ local function load_settings()
     if settings['MEZAE'] ~= nil then OPTS.MEZAE = settings['MEZAE'] end
     if settings['USEEPIC'] ~= nil then OPTS.USEEPIC = settings['USEEPIC'] end
     if settings['BYOS'] ~= nil then OPTS.BYOS = settings['BYOS'] end
-    if settings['SAFEMANA'] ~= nil then OPTS.BYOS = settings['SAFEMANA'] end
+    if settings['SAFEMANA'] ~= nil then OPTS.SAFEMANA = settings['SAFEMANA'] end
+    if settings['COMBATMEM'] ~= nil then OPTS.COMBATMEM = settings['COMBATMEM'] end
 end
 
 local function save_settings()
@@ -716,7 +723,7 @@ local function attack()
         mq.cmd('/squelch /nav stop')
     end
     if not mq.TLO.Stick.Active() and timer_expired(stick_timer, 3) then
-        mq.cmd('/squelch /stick loose moveback 50% uw')
+        mq.cmd('/squelch /stick loose !front moveback 55%% uw')
         stick_timer = current_time()
     end
     if not mq.TLO.Me.Combat() then
@@ -845,7 +852,7 @@ end
 local super_burn_timer = 0
 local super_burn_duration = 60
 local synergy_timer_preset_default = 18
-local synergy_timer_preset_quickburn = 9
+local synergy_timer_preset_quickburn = 12
 local synergy_timer_preset_superburn = 1
 
 
@@ -1030,7 +1037,10 @@ local function mash()
             USEEPIC()
         end
         for _,aa in ipairs(mashAAs) do
-            use_aa(aa['name'], aa['id'])
+            if (aa['name'] == 'Lyrical Prankster' and OPTS.ASSIST ~= 'group') or (aa['name'] == 'Fierce Eye' and OPTS.USEEPIC ~= 'never') then -- only when assisting in group / not doing epic
+            else
+                use_aa(aa['name'], aa['id'])
+            end
         end
     end
 end
@@ -1203,7 +1213,7 @@ end
 
 local check_spell_timer = 0
 local function check_spell_set()
-    if is_fighting() or mq.TLO.Me.Moving() or am_i_dead() or OPTS.BYOS then return end
+    if (is_fighting() or not OPTS.COMBATMEM) or mq.TLO.Me.Moving() or am_i_dead() or OPTS.BYOS then return end
     if SPELLSET_LOADED ~= OPTS.SPELLSET or timer_expired(check_spell_timer, 30) then
         if OPTS.SPELLSET == 'melee' then
             if mq.TLO.Me.Gem(1)() ~= spells['aria']['name'] then swap_spell(spells['aria']['name'], 1) end
@@ -1263,7 +1273,7 @@ local function check_spell_set()
             if mq.TLO.Me.Gem(10)() ~= spells['chantpoison']['name'] then swap_spell(spells['chantpoison']['name'], 10) end
             if mq.TLO.Me.Gem(11)() ~= spells['insult2']['name'] then swap_spell(spells['insult2']['name'], 11) end
             if mq.TLO.Me.Gem(12)() ~= 'Composite Psalm' then swap_spell(spells['composite']['name'], 12) end
-            if mq.TLO.Me.Gem(13)() ~= spells['arcane']['name'] then swap_spell(spells['arcane']['name'], 13) end
+            if mq.TLO.Me.Gem(13)() ~= spells['manaregen']['name'] then swap_spell(spells['manaregen']['name'], 13) end
             SPELLSET_LOADED = OPTS.SPELLSET
         end
         check_spell_timer = current_time()
@@ -1396,6 +1406,7 @@ local function draw_right_pane_window()
         OPTS.MEZST = draw_check_box('Mez ST', '##mezst', OPTS.MEZST, 'Mez single target')
         OPTS.MEZAE = draw_check_box('Mez AE', '##mezae', OPTS.MEZAE, 'Mez AOE')
         OPTS.BYOS = draw_check_box('BYOS', '##byos', OPTS.BYOS, 'Bring your own spells')
+        OPTS.COMBATMEM = draw_check_box('Combat mem spells', '##combatmem', OPTS.COMBATMEM, 'Shuffle memmed spells while fighting')
     end
     ImGui.EndChild()
 end
