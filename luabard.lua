@@ -116,11 +116,11 @@ local SPELLSET_LOADED = nil
 local I_AM_DEAD = false
 
 local LOG_PREFIX = '\a-t[\ax\ayBardBot\ax\a-t]\ax '
-local function printf(...)
-    print(LOG_PREFIX..string.format(...))
+local function info(text, ...)
+    printf(LOG_PREFIX..text, ...)
 end
-local function debug(...)
-    if DEBUG then printf(...) end
+local function debug(text, ...)
+    if DEBUG then printf(LOG_PREFIX..text, ...) end
 end
 
 local function get_spellid_and_rank(spell_name)
@@ -161,7 +161,7 @@ local spells = {
     ['mezae']=get_spellid_and_rank('Wave of Nocturn'),
 }
 for _,spell in pairs(spells) do
-    printf('%s (%s)', spell['name'], spell['id'])
+    info('%s (%s)', spell['name'], spell['id'])
 end
 
 -- entries in the dots table are pairs of {spell id, spell name} in priority order
@@ -478,7 +478,7 @@ local function save_settings()
 end
 
 local function current_time()
-    return os.time(os.date("!*t"))
+    return os.time()
 end
 
 local function timer_expired(t, expiration)
@@ -549,7 +549,7 @@ local function check_camp()
     if am_i_dead() then return end
     if is_fighting() or not CAMP then return end
     if mq.TLO.Zone.ID() ~= CAMP.ZoneID then
-        printf('Clearing camp due to zoning.')
+        info('Clearing camp due to zoning.')
         CAMP = nil
         return
     end
@@ -611,7 +611,7 @@ local function clean_targets()
         if not spawn() or spawn.Type() == 'Corpse' then
             TARGETS[mobid] = nil
         --else
-        --    printf('Resetting meztimer for mob_id %d', mobid)
+        --    info('Resetting meztimer for mob_id %d', mobid)
         --    TARGETS[mobid].meztimer = 0
         end
     end
@@ -687,7 +687,7 @@ local function check_target()
             synergy_timer = 0
             send_pet_timer = 0
             stick_timer = 0
-            printf('Assisting on >>> \ay%s\ax <<<', mq.TLO.Target.CleanName())
+            info('Assisting on >>> \ay%s\ax <<<', mq.TLO.Target.CleanName())
         end
     end
 end
@@ -739,7 +739,7 @@ local crescendo_timer = 0
 local function cast(spell_name, requires_target, requires_los)
     if not in_control() or (requires_los and not mq.TLO.Target.LineOfSight()) then return end
     if requires_target and mq.TLO.Target.ID() ~= ASSIST_TARGET_ID then return end
-    printf('Casting \ar%s\ax', spell_name)
+    info('Casting \ar%s\ax', spell_name)
     mq.cmdf('/cast "%s"', spell_name)
     mq.delay(10)
     if not mq.TLO.Me.Casting() then mq.cmdf('/cast %s', spell_name) end
@@ -755,7 +755,7 @@ end
 local function cast_mez(spell_name)
     if not in_control() or not mq.TLO.Target.LineOfSight() then return end
     local mez_target_id = mq.TLO.Target.ID()
-    printf('Casting \ar%s\ax', spell_name)
+    info('Casting \ar%s\ax', spell_name)
     mq.cmdf('/cast "%s"', spell_name)
     mq.delay(10)
     if not mq.TLO.Me.Casting() then mq.cmdf('/cast %s', spell_name) end
@@ -778,7 +778,7 @@ local MEZ_TARGET_ID = 0
 local function check_mez()
     if MOB_COUNT >= AE_MEZ_COUNT and OPTS.MEZAE then
         if mq.TLO.Me.Gem(spells['mezae']['name'])() and mq.TLO.Me.GemTimer(spells['mezae']['name'])() == 0 then
-            printf('AE Mezzing (MOB_COUNT=%d)', MOB_COUNT)
+            info('AE Mezzing (MOB_COUNT=%d)', MOB_COUNT)
             cast(spells['mezae']['name'])
             mob_radar()
             for id,_ in pairs(TARGETS) do
@@ -815,7 +815,7 @@ local function check_mez()
                         if assist_spawn.ID() ~= id then
                             MEZ_TARGET_NAME = mob.CleanName()
                             MEZ_TARGET_ID = id
-                            printf('Mezzing >>> %s (%d) <<<', mob.Name(), mob.ID())
+                            info('Mezzing >>> %s (%d) <<<', mob.Name(), mob.ID())
                             cast_mez(spells['mezst']['name'])
                             debug('STMEZ setting meztimer mob_id %d', id)
                             TARGETS[id].meztimer = current_time()
@@ -979,7 +979,7 @@ end
 
 local function send_pet()
     if timer_expired(send_pet_timer, 5) and (is_fighting() or should_assist()) then
-        mq.cmd('/multiline ; /pet swarm ;')
+        mq.cmd('/pet swarm')
         send_pet_timer = current_time()
     end
 end
@@ -988,7 +988,7 @@ local function use_item(item)
     if item.Timer() == '0' then
         if item.Clicky.Spell.TargetType() == 'Single' and not mq.TLO.Target() then return end
         if can_cast_weave() then
-            printf('use_item: \ax\ar%s\ax', item)
+            info('use_item: \ax\ar%s\ax', item)
             mq.cmdf('/useitem "%s"', item)
         end
         mq.delay(300+item.CastTime()) -- wait for cast time + some buffer so we don't skip over stuff
@@ -1007,12 +1007,12 @@ local function use_aa(aa, number)
                     boastful_timer = current_time()
                 end
             end
-            printf('use_aa: \ax\ar%s\ax', aa)
+            info('use_aa: \ax\ar%s\ax', aa)
             mq.cmdf('/alt activate %d', number)
             mq.delay(50+mq.TLO.Me.AltAbility(aa).Spell.CastTime()) -- wait for cast time + some buffer so we don't skip over stuff
         end
     elseif not mq.TLO.Me.Song(aa)() and not mq.TLO.Me.Buff(aa)() and mq.TLO.Me.AltAbilityReady(aa)() and can_cast_weave() then
-        printf('use_aa: \ax\ar%s\ax', aa)
+        info('use_aa: \ax\ar%s\ax', aa)
         mq.cmdf('/alt activate %d', number)
         -- alternatively maybe while loop until we see the buff or song is applied, but not all apply a buff or song, like pet stuff
         mq.delay(50+mq.TLO.Me.AltAbility(aa).Spell.CastTime()) -- wait for cast time + some buffer so we don't skip over stuff
@@ -1055,7 +1055,7 @@ local function is_burn_condition_met()
         burn_active = false
     end
     if BURN_NOW then
-        printf('\arActivating Burns (on demand)\ax')
+        info('\arActivating Burns (on demand)\ax')
         burn_active_timer = current_time()
         burn_active = true
         BURN_NOW = false
@@ -1071,17 +1071,17 @@ local function is_burn_condition_met()
                 return true
             end
         elseif OPTS.BURNALLNAMED and mq.TLO.Target.Named() then
-            printf('\arActivating Burns (named)\ax')
+            info('\arActivating Burns (named)\ax')
             burn_active_timer = current_time()
             burn_active = true
             return true
         elseif mq.TLO.SpawnCount(string.format('xtarhater radius %d zradius 50', OPTS.CAMPRADIUS))() >= OPTS.BURNCOUNT then
-            printf('\arActivating Burns (mob count > %d)\ax', OPTS.BURNCOUNT)
+            info('\arActivating Burns (mob count > %d)\ax', OPTS.BURNCOUNT)
             burn_active_timer = current_time()
             burn_active = true
             return true
         elseif OPTS.BURNPCT ~= 0 and mq.TLO.Target.PctHPs() < OPTS.BURNPCT then
-            printf('\arActivating Burns (percent HP)\ax')
+            info('\arActivating Burns (percent HP)\ax')
             burn_active_timer = current_time()
             burn_active = true
             return true
@@ -1515,8 +1515,8 @@ end
 -- END UI IMPLEMENTATION
 
 local function show_help()
-    printf('BardBot 1.0')
-    printf('Commands:\n- /brd burnnow\n- /brd pause on|1|off|0\n- /brd show|hide\n- /brd mode 0|1|2\n- /brd resetcamp\n- /brd help')
+    info('BardBot 1.0')
+    info('Commands:\n- /brd burnnow\n- /brd pause on|1|off|0\n- /brd show|hide\n- /brd mode 0|1|2\n- /brd resetcamp\n- /brd help')
 end
 
 local function brd_bind(...)
@@ -1562,40 +1562,40 @@ local function brd_bind(...)
         if args[2] then
             if opt == 'USEEPIC' then
                 if EPIC_OPTS[new_value] then
-                    printf('Setting %s to: %s', opt, new_value)
+                    info('Setting %s to: %s', opt, new_value)
                     OPTS[opt] = new_value
                 end
             elseif opt == 'SPELLSET' then
                 if SPELLSETS[new_value] then
-                    printf('Setting %s to: %s', opt, new_value)
+                    info('Setting %s to: %s', opt, new_value)
                     OPTS[opt] = new_value
                 end
             elseif opt == 'ASSIST' then
                 if ASSISTS[new_value] then
-                    printf('Setting %s to: %s', opt, new_value)
+                    info('Setting %s to: %s', opt, new_value)
                     OPTS[opt] = new_value
                 end
             elseif type(OPTS[opt]) == 'boolean' then
                 if args[2] == '0' or args[2] == 'off' then
-                    printf('Setting %s to: false', opt)
+                    info('Setting %s to: false', opt)
                     OPTS[opt] = false
                 elseif args[2] == '1' or args[2] == 'on' then
-                    printf('Setting %s to: true', opt)
+                    info('Setting %s to: true', opt)
                     OPTS[opt] = true
                 end
             elseif type(OPTS[opt]) == 'number' then
                 if tonumber(new_value) then
-                    printf('Setting %s to: %s', opt, tonumber(new_value))
+                    info('Setting %s to: %s', opt, tonumber(new_value))
                     OPTS[opt] = tonumber(new_value)
                 end
             else
-                printf('Unsupported command line option: %s %s', opt, new_value)
+                info('Unsupported command line option: %s %s', opt, new_value)
             end
         else
             if OPTS[opt] ~= nil then
-                printf('%s: %s', opt, OPTS[opt])
+                info('%s: %s', opt, OPTS[opt])
             else
-                printf('Unrecognized option: %s', opt)
+                info('Unrecognized option: %s', opt)
             end
         end
     end
@@ -1603,21 +1603,21 @@ end
 mq.bind('/brd', brd_bind)
 
 local function event_dead()
-    printf('bard down!')
+    info('bard down!')
     I_AM_DEAD = true
 end
 local function event_mezbreak(line, mob, breaker)
-    printf('\ay%s\ax mez broken by \ag%s\ax', mob, breaker)
+    info('\ay%s\ax mez broken by \ag%s\ax', mob, breaker)
 end
 local function event_mezimmune(line)
     if MEZ_TARGET_NAME then
-        printf('Added to MEZ_IMMUNE: \ay%s', MEZ_TARGET_NAME)
+        info('Added to MEZ_IMMUNE: \ay%s', MEZ_TARGET_NAME)
         MEZ_IMMUNES[MEZ_TARGET_NAME] = 1
     end
 end
 local function event_mezresist(line, mob)
     if MEZ_TARGET_NAME and mob == MEZ_TARGET_NAME then
-        printf('MEZ RESIST >>> %s <<<', MEZ_TARGET_NAME)
+        info('MEZ RESIST >>> %s <<<', MEZ_TARGET_NAME)
         TARGETS[MEZ_TARGET_ID].meztimer = 0
     end
 end
@@ -1626,7 +1626,7 @@ mq.event('event_dead', 'You died.', event_dead)
 mq.event('event_dead_slain', 'You have been slain by#*#', event_dead)
 mq.event('event_mezbreak', '#1# has been awakened by #2#.', event_mezbreak)
 mq.event('event_mezimmune', 'Your target cannot be mesmerized#*#', event_mezimmune)
-mq.event('event_mezimmune', '#1# resisted your#*#slumber of the diabo#*#', event_mezresist)
+mq.event('event_mezresist', '#1# resisted your#*#slumber of the diabo#*#', event_mezresist)
 
 mq.imgui.init('Bard Bot 1.0', bardbot_ui)
 
